@@ -18,7 +18,7 @@ from signal_light.agent_signals import AgentSignal, SIGNALS
 from signal_light.hardware import LightMapping, SignalLight, SignalLightError
 
 
-STATE_DIR = Path(os.environ.get("SIGNAL_LIGHT_STATE_DIR", "/private/tmp/signal-light"))
+STATE_DIR = Path(os.environ.get("SIGNAL_LIGHT_STATE_DIR", "/tmp/signal-light"))
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 PID_FILE = STATE_DIR / "worker.json"
 LOG_FILE = STATE_DIR / "worker.log"
@@ -53,11 +53,17 @@ def apply_signal(signal: AgentSignal, *, speed: float = 1.0) -> None:
         if _worker_matches(signal.name):
             return
         stop_worker()
-        start_worker(signal.name, speed=speed)
+        try:
+            start_worker(signal.name, speed=speed)
+        except SignalLightError:
+            pass
         return
 
     stop_worker()
-    _play_with_retries(signal, speed=speed)
+    try:
+        _play_with_retries(signal, speed=speed)
+    except SignalLightError:
+        pass
     if signal.name == "idle":
         start_sleep_worker()
 
@@ -69,11 +75,17 @@ def apply_signal_now(signal: AgentSignal, *, speed: float = 1.0) -> None:
         if _worker_matches(signal.name):
             return
         stop_worker()
-        start_worker(signal.name, speed=speed)
+        try:
+            start_worker(signal.name, speed=speed)
+        except SignalLightError:
+            pass
         return
 
     stop_worker()
-    _play_with_retries(signal, speed=speed)
+    try:
+        _play_with_retries(signal, speed=speed)
+    except SignalLightError:
+        pass
     if signal.name == "idle":
         start_sleep_worker()
 

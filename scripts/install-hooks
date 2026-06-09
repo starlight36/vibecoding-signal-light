@@ -4,12 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
-if [[ "$(uname -s)" == "Darwin" ]]; then
-  _default_cache="/private/tmp/signal-light-uv-cache"
-else
-  _default_cache="/tmp/signal-light-uv-cache"
-fi
-export UV_CACHE_DIR="${SIGNAL_LIGHT_UV_CACHE_DIR:-$_default_cache}"
+export UV_CACHE_DIR="${SIGNAL_LIGHT_UV_CACHE_DIR:-/tmp/signal-light-uv-cache}"
 export PYTHONDONTWRITEBYTECODE="${PYTHONDONTWRITEBYTECODE:-1}"
 
 if [[ "${SIGNAL_LIGHT_USE_UV:-0}" == "1" ]] && command -v uv >/dev/null 2>&1; then
