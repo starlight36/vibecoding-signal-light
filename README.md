@@ -188,6 +188,15 @@ Build the native runtime:
 cargo build --manifest-path native/Cargo.toml --release
 ```
 
+Or download a prebuilt release archive for your platform:
+
+- `signal-light-<version>-macos-aarch64.tar.gz`
+- `signal-light-<version>-macos-x86_64.tar.gz`
+- `signal-light-<version>-linux-amd64.tar.gz`
+- `signal-light-<version>-linux-arm64.tar.gz`
+
+Each archive contains `bin/signal-light-native` plus the `scripts/` wrappers, so the wrapper commands below work from the unpacked directory without extra setup.
+
 List the signal language:
 
 ```bash
@@ -222,7 +231,7 @@ Play real signals:
 ./scripts/signal-light play idle
 ```
 
-The wrapper scripts require a built native binary. They look first at `SIGNAL_LIGHT_NATIVE_BIN`, then `native/target/release/signal-light-native`, then `native/target/debug/signal-light-native`:
+The wrapper scripts require a built native binary. They look first at `SIGNAL_LIGHT_NATIVE_BIN`, then `bin/signal-light-native`, then `native/target/release/signal-light-native`, then `native/target/debug/signal-light-native`:
 
 ```bash
 export SIGNAL_LIGHT_NATIVE_BIN=/absolute/path/to/signal-light-native

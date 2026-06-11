@@ -9,6 +9,7 @@ if [[ -n "${SIGNAL_LIGHT_NATIVE_BIN:-}" ]]; then
   native_candidates+=("${SIGNAL_LIGHT_NATIVE_BIN}")
 fi
 native_candidates+=(
+  "$ROOT_DIR/bin/signal-light-native"
   "$ROOT_DIR/native/target/release/signal-light-native"
   "$ROOT_DIR/native/target/debug/signal-light-native"
 )

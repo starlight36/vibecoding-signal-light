@@ -109,7 +109,7 @@ Set `SIGNAL_LIGHT_ACTIVE_LOW=0` if your signal model is wired active-high.
 
 If the wrong light turns on, adjust `SIGNAL_LIGHT_*_PIN`. If lights are inverted, adjust `SIGNAL_LIGHT_ACTIVE_LOW`.
 
-The wrapper scripts require the Rust native runtime. They use `SIGNAL_LIGHT_NATIVE_BIN` when set, then `native/target/release/signal-light-native`, then `native/target/debug/signal-light-native`. If no native binary is available, they exit with a concise build instruction. Build the default release binary with `cargo build --manifest-path native/Cargo.toml --release`.
+The wrapper scripts require the Rust native runtime. They use `SIGNAL_LIGHT_NATIVE_BIN` when set, then `bin/signal-light-native`, then `native/target/release/signal-light-native`, then `native/target/debug/signal-light-native`. If no native binary is available, they exit with a concise build instruction. Build the default release binary with `cargo build --manifest-path native/Cargo.toml --release`.
 
 ## Claude Code Hook Mapping
 
