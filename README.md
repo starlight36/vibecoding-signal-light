@@ -180,6 +180,58 @@ The work cycle avoids software PWM on plain GPIO hardware, because USB GPIO timi
 - 支持无硬件 dry-run 预览。
 - 支持通过环境变量调整 GPIO 接线。
 
+## Rust Runtime Migration / Rust 运行时迁移
+
+Signal Light has moved from the earlier Python/uv script runtime to a Rust-native runtime. The current wrapper scripts no longer run `python -m signal_light`, do not require `uv sync`, and do not use a repository `.venv`. Build the Rust binary or download a release archive before running the commands below.
+
+Signal Light 已经从早期的 Python/uv 脚本运行时迁移到 Rust 原生运行时。当前 wrapper 不再执行 `python -m signal_light`，不需要 `uv sync`，也不依赖仓库里的 `.venv`。运行下面的命令前，请先构建 Rust 二进制，或下载对应平台的 release 包。
+
+If you are upgrading from the Python version:
+
+1. Build or install the native binary:
+
+   ```bash
+   cargo build --manifest-path native/Cargo.toml --release
+   ```
+
+2. Reinstall or repair hooks so Codex and Claude Code configs point at the native wrappers:
+
+   ```bash
+   ./scripts/install-hooks --all -y
+   ```
+
+3. Smoke-test the new runtime without hardware:
+
+   ```bash
+   ./scripts/signal-light play working --dry-run
+   ./scripts/signal-light status
+   ```
+
+4. The old Python project files (`pyproject.toml`, `uv.lock`, `.python-version`, and `signal_light/`) have been removed. Local `.venv` or `.pytest_cache` directories can be deleted if you only used them for Signal Light.
+
+如果你正在从 Python 版本升级：
+
+1. 构建或安装原生二进制：
+
+   ```bash
+   cargo build --manifest-path native/Cargo.toml --release
+   ```
+
+2. 重新安装或修复 hooks，让 Codex 和 Claude Code 配置指向新的原生 wrapper：
+
+   ```bash
+   ./scripts/install-hooks --all -y
+   ```
+
+3. 先用 dry-run 做一次无硬件烟测：
+
+   ```bash
+   ./scripts/signal-light play working --dry-run
+   ./scripts/signal-light status
+   ```
+
+4. 旧的 Python 项目文件（`pyproject.toml`、`uv.lock`、`.python-version`、`signal_light/`）已经移除。如果本地 `.venv` 或 `.pytest_cache` 只是给 Signal Light 用的，也可以删掉。
+
 ## Quick Start / 快速开始
 
 Build the native runtime:
