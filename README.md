@@ -180,11 +180,19 @@ The work cycle avoids software PWM on plain GPIO hardware, because USB GPIO timi
 - 支持无硬件 dry-run 预览。
 - 支持通过环境变量调整 GPIO 接线。
 
-## Rust Runtime Migration / Rust 运行时迁移
+## Migrating From the Earlier Python Version / 从早期 Python 版本迁移到最新版 Rust 运行时
 
-Signal Light has moved from the earlier Python/uv script runtime to a Rust-native runtime. The current wrapper scripts no longer run `python -m signal_light`, do not require `uv sync`, and do not use a repository `.venv`. Build the Rust binary or download a release archive before running the commands below.
+Signal Light has moved from the earlier Python/uv script runtime to the latest Rust-native runtime. The migration was made because this project now behaves more like a small native hardware utility than an application script: hooks need to return quickly, one local server needs to own the persistent lamp animation, and users should not need to debug Python/uv environments just to drive a desk light. See [PR #8](https://github.com/starlight36/vibecoding-signal-light/pull/8) for the full migration context and implementation details.
 
-Signal Light 已经从早期的 Python/uv 脚本运行时迁移到 Rust 原生运行时。当前 wrapper 不再执行 `python -m signal_light`，不需要 `uv sync`，也不依赖仓库里的 `.venv`。运行下面的命令前，请先构建 Rust 二进制，或下载对应平台的 release 包。
+Signal Light 已经从早期的 Python/uv 脚本运行时迁移到最新版 Rust 原生运行时。迁移的原因是：这个项目现在更像一个小型原生硬件工具，而不是普通应用脚本；hook 需要快速返回，本地 server 需要持续持有灯的动画和状态，用户也不应该为了驱动桌面信号灯去排查 Python/uv 环境问题。完整迁移背景和实现细节见 [PR #8](https://github.com/starlight36/vibecoding-signal-light/pull/8)。
+
+The current wrapper scripts no longer run `python -m signal_light`, do not require `uv sync`, and do not use a repository `.venv`. Build the Rust binary or download a release archive before running the commands below.
+
+当前 wrapper 不再执行 `python -m signal_light`，不需要 `uv sync`，也不依赖仓库里的 `.venv`。运行下面的命令前，请先构建 Rust 二进制，或下载对应平台的 release 包。
+
+If you still need the old Python implementation, use the [`legacy-python-main`](https://github.com/starlight36/vibecoding-signal-light/tree/legacy-python-main) branch.
+
+如果你仍然需要旧的 Python 实现，可以查看 [`legacy-python-main`](https://github.com/starlight36/vibecoding-signal-light/tree/legacy-python-main) 分支。
 
 If you are upgrading from the Python version:
 
