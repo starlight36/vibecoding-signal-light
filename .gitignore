@@ -1,4 +1,4 @@
-# Python-generated files
+# Local generated files
 __pycache__/
 .pytest_cache/
 *.py[oc]
@@ -11,8 +11,6 @@ coverage.xml
 htmlcov/
 .mypy_cache/
 .ruff_cache/
-
-# Virtual environments
 .venv
 venv/
 
@@ -21,3 +19,10 @@ venv/
 *.log
 .env
 .env.*
+
+# Rust build outputs
+target/
+*.rs.bk
+*.rlib
+*.prof*
+.idea/

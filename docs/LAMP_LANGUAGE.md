@@ -109,7 +109,7 @@ Set `SIGNAL_LIGHT_ACTIVE_LOW=0` if your signal model is wired active-high.
 
 If the wrong light turns on, adjust `SIGNAL_LIGHT_*_PIN`. If lights are inverted, adjust `SIGNAL_LIGHT_ACTIVE_LOW`.
 
-The wrapper scripts avoid writing `__pycache__` files in the repository. By default they use `.venv/bin/python` when it exists, then fall back to `python3`. Set `SIGNAL_LIGHT_USE_UV=1` if you want the wrappers to run through `uv run`.
+The wrapper scripts require the Rust native runtime. They use `SIGNAL_LIGHT_NATIVE_BIN` when set, then `native/target/release/signal-light-native`, then `native/target/debug/signal-light-native`. If no native binary is available, they exit with a concise build instruction. Build the default release binary with `cargo build --manifest-path native/Cargo.toml --release`.
 
 ## Claude Code Hook Mapping
 
@@ -142,7 +142,7 @@ Add hooks to `~/.claude/settings.json` (or project `.claude/settings.json`):
         "hooks": [
           {
             "type": "command",
-            "command": "/Users/liusixian/Develop/starlight36/signal-light/scripts/claude-code-signal-hook",
+            "command": "/path/to/signal-light/scripts/claude-code-signal-hook",
             "timeout": 5
           }
         ],
@@ -154,7 +154,7 @@ Add hooks to `~/.claude/settings.json` (or project `.claude/settings.json`):
         "hooks": [
           {
             "type": "command",
-            "command": "/Users/liusixian/Develop/starlight36/signal-light/scripts/claude-code-signal-hook",
+            "command": "/path/to/signal-light/scripts/claude-code-signal-hook",
             "timeout": 5
           }
         ],
@@ -166,7 +166,7 @@ Add hooks to `~/.claude/settings.json` (or project `.claude/settings.json`):
         "hooks": [
           {
             "type": "command",
-            "command": "/Users/liusixian/Develop/starlight36/signal-light/scripts/claude-code-signal-hook",
+            "command": "/path/to/signal-light/scripts/claude-code-signal-hook",
             "timeout": 5
           }
         ],
@@ -178,7 +178,7 @@ Add hooks to `~/.claude/settings.json` (or project `.claude/settings.json`):
         "hooks": [
           {
             "type": "command",
-            "command": "/Users/liusixian/Develop/starlight36/signal-light/scripts/claude-code-signal-hook",
+            "command": "/path/to/signal-light/scripts/claude-code-signal-hook",
             "timeout": 5
           }
         ],
@@ -190,7 +190,7 @@ Add hooks to `~/.claude/settings.json` (or project `.claude/settings.json`):
         "hooks": [
           {
             "type": "command",
-            "command": "/Users/liusixian/Develop/starlight36/signal-light/scripts/claude-code-signal-hook",
+            "command": "/path/to/signal-light/scripts/claude-code-signal-hook",
             "timeout": 5
           }
         ],
@@ -202,7 +202,7 @@ Add hooks to `~/.claude/settings.json` (or project `.claude/settings.json`):
         "hooks": [
           {
             "type": "command",
-            "command": "/Users/liusixian/Develop/starlight36/signal-light/scripts/claude-code-signal-hook",
+            "command": "/path/to/signal-light/scripts/claude-code-signal-hook",
             "timeout": 10
           }
         ],
@@ -214,7 +214,7 @@ Add hooks to `~/.claude/settings.json` (or project `.claude/settings.json`):
         "hooks": [
           {
             "type": "command",
-            "command": "/Users/liusixian/Develop/starlight36/signal-light/scripts/claude-code-signal-hook",
+            "command": "/path/to/signal-light/scripts/claude-code-signal-hook",
             "timeout": 5
           }
         ],
@@ -226,7 +226,7 @@ Add hooks to `~/.claude/settings.json` (or project `.claude/settings.json`):
         "hooks": [
           {
             "type": "command",
-            "command": "/Users/liusixian/Develop/starlight36/signal-light/scripts/claude-code-signal-hook",
+            "command": "/path/to/signal-light/scripts/claude-code-signal-hook",
             "timeout": 5
           }
         ],
@@ -238,7 +238,7 @@ Add hooks to `~/.claude/settings.json` (or project `.claude/settings.json`):
         "hooks": [
           {
             "type": "command",
-            "command": "/Users/liusixian/Develop/starlight36/signal-light/scripts/claude-code-signal-hook",
+            "command": "/path/to/signal-light/scripts/claude-code-signal-hook",
             "timeout": 5
           }
         ],
@@ -263,7 +263,7 @@ Add command hooks like this to `~/.codex/hooks.json`, keeping any existing hooks
         "hooks": [
           {
             "type": "command",
-            "command": "/Users/liusixian/Develop/starlight36/signal-light/scripts/codex-signal-hook UserPromptSubmit",
+            "command": "/path/to/signal-light/scripts/codex-signal-hook UserPromptSubmit",
             "timeout": 5
           }
         ]
@@ -274,7 +274,7 @@ Add command hooks like this to `~/.codex/hooks.json`, keeping any existing hooks
         "hooks": [
           {
             "type": "command",
-            "command": "/Users/liusixian/Develop/starlight36/signal-light/scripts/codex-signal-hook PreToolUse",
+            "command": "/path/to/signal-light/scripts/codex-signal-hook PreToolUse",
             "timeout": 5
           }
         ]
@@ -285,7 +285,7 @@ Add command hooks like this to `~/.codex/hooks.json`, keeping any existing hooks
         "hooks": [
           {
             "type": "command",
-            "command": "/Users/liusixian/Develop/starlight36/signal-light/scripts/codex-signal-hook PermissionRequest",
+            "command": "/path/to/signal-light/scripts/codex-signal-hook PermissionRequest",
             "timeout": 10
           }
         ]
@@ -296,7 +296,7 @@ Add command hooks like this to `~/.codex/hooks.json`, keeping any existing hooks
         "hooks": [
           {
             "type": "command",
-            "command": "/Users/liusixian/Develop/starlight36/signal-light/scripts/codex-signal-hook Stop",
+            "command": "/path/to/signal-light/scripts/codex-signal-hook Stop",
             "timeout": 5
           }
         ]

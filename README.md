@@ -50,7 +50,7 @@ The current reference build uses:
 | --- | --- |
 | MCP2221A USB GPIO adapter | Drives the traffic light from a Mac/Linux machine over USB |
 | 3-light traffic signal model | Red, yellow, and green LEDs or lamp modules |
-| Python + EasyMCP2221 | Local GPIO control, no network service required |
+| Rust native runtime | Local GPIO control, no Python environment or network service required |
 
 当前参考硬件：
 
@@ -58,7 +58,7 @@ The current reference build uses:
 | --- | --- |
 | MCP2221A USB GPIO 转接板 | 通过 USB 从电脑控制 GPIO |
 | 三色交通信号灯模型 | 红、黄、绿三路 LED 或灯模块 |
-| Python + EasyMCP2221 | 本地控制 GPIO，不需要额外云服务 |
+| Rust 原生运行时 | 本地控制 GPIO，不需要 Python 环境或额外云服务 |
 
 Default wiring is active-low:
 
@@ -182,10 +182,10 @@ The work cycle avoids software PWM on plain GPIO hardware, because USB GPIO timi
 
 ## Quick Start / 快速开始
 
-Install dependencies with your preferred Python workflow. With `uv`:
+Build the native runtime:
 
 ```bash
-uv sync
+cargo build --manifest-path native/Cargo.toml --release
 ```
 
 List the signal language:
@@ -208,6 +208,12 @@ Run a wiring test on the real MCP2221A setup:
 ./scripts/signal-light test
 ```
 
+Expected hardware-test outcome on the reference build:
+
+- default active-low wiring: red -> yellow -> green -> all three on -> command exits
+- active-high wiring: export `SIGNAL_LIGHT_ACTIVE_LOW=0` first, then expect the same logical order
+- missing or busy hardware: the command exits non-zero with a concise MCP2221A diagnostic instead of hanging
+
 Play real signals:
 
 ```bash
@@ -216,11 +222,13 @@ Play real signals:
 ./scripts/signal-light play idle
 ```
 
-The wrapper scripts avoid writing `__pycache__` files in the repository. By default they use `.venv/bin/python` when it exists, then fall back to `python3`. If you want wrappers to run through `uv`, set:
+The wrapper scripts require a built native binary. They look first at `SIGNAL_LIGHT_NATIVE_BIN`, then `native/target/release/signal-light-native`, then `native/target/debug/signal-light-native`:
 
 ```bash
-export SIGNAL_LIGHT_USE_UV=1
+export SIGNAL_LIGHT_NATIVE_BIN=/absolute/path/to/signal-light-native
 ```
+
+If no native binary is available, the wrappers exit with a concise build instruction instead of falling back to Python.
 
 ## Codex Integration / Codex 集成
 
@@ -233,6 +241,8 @@ The easiest way to install or repair local hooks is the built-in wizard:
 ```
 
 The wizard detects supported local agents, validates the current hook files, creates timestamped backups, and installs only the Signal Light hook entries while keeping other hooks on the same events.
+
+The hook installer is implemented in the native binary as `signal-light-native install-hooks`; the `./scripts/install-hooks` wrapper uses that command directly.
 
 The first hook or `play` command auto-starts a local Signal Light server process. That server owns the shared display state, the per-session state, and the animation loop, keeping the single physical lamp in sync for all local agent clients. `status` reports both the session aggregate and the actual `display_signal` currently owned by the server.
 
