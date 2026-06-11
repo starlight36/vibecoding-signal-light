@@ -141,7 +141,13 @@ fn failure_marker_from_value(value: &Value) -> Option<&'static str> {
             if normalized.contains("exception") {
                 return Some("exception");
             }
-            Some("error")
+            if matches!(
+                normalized.as_str(),
+                "error" | "errored" | "fatal" | "timed out" | "timeout" | "denied" | "blocked"
+            ) {
+                return Some("error");
+            }
+            None
         }
         Value::Null | Value::Bool(false) => None,
         _ => Some("error"),

@@ -173,7 +173,9 @@ fn error_response(error: SignalLightError) -> RuntimeResponse {
 
 fn write_response(path: &Path, response: &RuntimeResponse) -> Result<()> {
     let payload = serde_json::to_string(response)? + "\n";
-    fs::write(path, payload)?;
+    let temp_path = path.with_extension(format!("{}.tmp", std::process::id()));
+    fs::write(&temp_path, payload)?;
+    fs::rename(temp_path, path)?;
     Ok(())
 }
 

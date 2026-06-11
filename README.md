@@ -239,6 +239,8 @@ export SIGNAL_LIGHT_NATIVE_BIN=/absolute/path/to/signal-light-native
 
 If no native binary is available, the wrappers exit with a concise build instruction instead of falling back to Python.
 
+Runtime state is stored in a per-user directory by default: `$XDG_STATE_HOME/signal-light` when set, `~/Library/Application Support/signal-light` on macOS, or `~/.local/state/signal-light` on Linux. Override it with `SIGNAL_LIGHT_STATE_DIR` if you need a custom location.
+
 ## Codex Integration / Codex 集成
 
 The easiest way to install or repair local hooks is the built-in wizard:

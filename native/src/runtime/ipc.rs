@@ -7,7 +7,7 @@ use std::process::{Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use crate::config::RuntimeConfig;
+use crate::config::{ensure_private_state_dir, RuntimeConfig};
 use crate::error::{Result, SignalLightError};
 use crate::model::{RuntimeCommand, RuntimeResponse, RuntimeSnapshot};
 use crate::runtime::session_store::{is_pid_running, SessionStore};
@@ -48,28 +48,30 @@ pub fn request(
     start_if_missing: bool,
 ) -> Result<RuntimeResponse> {
     if start_if_missing {
-        ensure_server_running(config)?;
-    } else if !server_running(config) {
+        return match request_once_transport(config, command) {
+            Ok(response) => response_into_result(response),
+            Err(error) => {
+                cleanup_unreachable_server(config);
+                ensure_server_running(config)?;
+                request_once_transport(config, command)
+                    .and_then(response_into_result)
+                    .map_err(|second_error| {
+                        SignalLightError::Runtime(format!(
+                            "Cannot reach signal server: {}; retry failed with {}",
+                            error, second_error
+                        ))
+                    })
+            }
+        };
+    }
+
+    if !server_running(config) {
         return Err(SignalLightError::Runtime(
             "Signal server is not running.".to_string(),
         ));
     }
 
-    match request_once_transport(config, command) {
-        Ok(response) => Ok(response),
-        Err(error) if start_if_missing => {
-            cleanup_unreachable_server(config);
-            ensure_server_running(config)?;
-            request_once_transport(config, command).map_err(|second_error| {
-                SignalLightError::Runtime(format!(
-                    "Cannot reach signal server: {}; retry failed with {}",
-                    error, second_error
-                ))
-            })
-        }
-        Err(error) => Err(error),
-    }
-    .and_then(response_into_result)
+    request_once_transport(config, command).and_then(response_into_result)
 }
 
 pub fn ensure_server_running(config: &RuntimeConfig) -> Result<()> {
@@ -83,7 +85,7 @@ pub fn ensure_server_running(config: &RuntimeConfig) -> Result<()> {
     }
 
     cleanup_unreachable_server(config);
-    fs::create_dir_all(&config.state.root)?;
+    ensure_private_state_dir(&config.state.root)?;
 
     let log_file = OpenOptions::new()
         .create(true)
@@ -254,7 +256,7 @@ pub fn create_request_pipe(path: &Path) -> Result<()> {
 }
 
 pub fn acquire_process_lock(config: &RuntimeConfig) -> Result<FileLock> {
-    fs::create_dir_all(&config.state.root)?;
+    ensure_private_state_dir(&config.state.root)?;
     let lock = acquire_file_lock(&config.state.server_lock_file, true)?.ok_or_else(|| {
         SignalLightError::Runtime("Signal server is already running.".to_string())
     })?;
@@ -263,7 +265,7 @@ pub fn acquire_process_lock(config: &RuntimeConfig) -> Result<FileLock> {
 }
 
 pub fn acquire_startup_lock(config: &RuntimeConfig) -> Result<FileLock> {
-    fs::create_dir_all(&config.state.root)?;
+    ensure_private_state_dir(&config.state.root)?;
     match acquire_file_lock(&config.state.server_startup_lock_file, false)? {
         Some(lock) => Ok(lock),
         None => unreachable!("blocking startup lock acquisition always returns a lock"),

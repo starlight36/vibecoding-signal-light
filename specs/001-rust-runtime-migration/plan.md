@@ -14,7 +14,7 @@ Migrate runtime-critical Signal Light behavior to a Rust native binary while pre
 
 **Primary Dependencies**: Rust crates for CLI parsing, JSON serialization, structured error handling, process coordination, and HID access to MCP2221A.
 
-**Storage**: Local-only runtime files in a configurable state directory, including status snapshots and process coordination files; no database.
+**Storage**: Local-only runtime files in a configurable per-user state directory, including status snapshots and process coordination files; no database.
 
 **Testing**: `cargo test` for native unit and integration coverage plus documented manual validation on reference hardware.
 

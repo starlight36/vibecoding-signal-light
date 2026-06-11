@@ -1,5 +1,7 @@
 mod common;
 
+use std::fs;
+
 use signal_light_native::model::RuntimeCommand;
 use signal_light_native::runtime::ipc;
 
@@ -48,6 +50,41 @@ fn session_signal_updates_aggregate_and_session_records() {
     assert_eq!(
         snapshot.sessions["turn:demo"].owner_pid,
         Some(std::process::id())
+    );
+
+    common::stop_runtime(&config);
+}
+
+#[test]
+fn response_write_is_atomic_without_temp_file_leak() {
+    let _guard = common::env_lock();
+    let (_tempdir, config) = common::temp_config();
+    common::autostart_runtime(&config);
+
+    let response = ipc::request(
+        &config,
+        &RuntimeCommand {
+            action: "status".to_string(),
+            session_key: None,
+            signal_name: None,
+            owner_pid: None,
+            speed: None,
+            reply_to: None,
+        },
+        true,
+    )
+    .unwrap();
+
+    assert!(response.ok);
+    let leftovers = fs::read_dir(&config.state.root)
+        .unwrap()
+        .filter_map(|entry| entry.ok())
+        .map(|entry| entry.file_name().to_string_lossy().to_string())
+        .filter(|name| name.contains(".response.json."))
+        .collect::<Vec<_>>();
+    assert!(
+        leftovers.is_empty(),
+        "leftover temp response files: {leftovers:?}"
     );
 
     common::stop_runtime(&config);

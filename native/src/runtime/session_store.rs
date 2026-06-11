@@ -2,6 +2,7 @@ use std::fs;
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use crate::config::ensure_private_state_dir;
 use crate::config::RuntimeConfig;
 use crate::error::Result;
 use crate::model::{RuntimeSnapshot, SessionRecord, StateDocument};
@@ -25,8 +26,7 @@ impl SessionStore {
     }
 
     pub fn ensure_state_dir(&self) -> Result<()> {
-        fs::create_dir_all(&self.config.state.root)?;
-        Ok(())
+        ensure_private_state_dir(&self.config.state.root)
     }
 
     pub fn read_state(&self) -> Result<StateDocument> {
@@ -130,12 +130,13 @@ impl SessionStore {
     }
 
     pub fn prune_state(&self, state: &mut StateDocument) -> bool {
-        let before = serde_json::to_string(&state.sessions).unwrap_or_default();
+        let before_len = state.sessions.len();
+        let had_invalid_runtime_pid = state.runtime_pid.is_some_and(|pid| !is_pid_running(pid));
         let now = unix_timestamp();
         state
             .sessions
             .retain(|_, record| should_keep_session(record, now, &self.config));
-        let mut changed = before != serde_json::to_string(&state.sessions).unwrap_or_default();
+        let mut changed = before_len != state.sessions.len();
         if state
             .direct_signal
             .as_deref()
@@ -144,7 +145,7 @@ impl SessionStore {
             state.direct_signal = None;
             changed = true;
         }
-        if state.runtime_pid.is_some_and(|pid| !is_pid_running(pid)) {
+        if had_invalid_runtime_pid {
             state.runtime_pid = None;
             changed = true;
         }

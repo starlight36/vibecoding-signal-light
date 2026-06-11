@@ -60,6 +60,35 @@ fn request_without_running_server_and_no_autostart_is_an_error() {
 }
 
 #[test]
+fn request_autostarts_server_without_preflight_status_probe() {
+    let _guard = common::env_lock();
+    let (_tempdir, config) = common::temp_config();
+    std::env::set_var(
+        "SIGNAL_LIGHT_NATIVE_BIN",
+        env!("CARGO_BIN_EXE_signal-light-native"),
+    );
+    std::env::set_var("SIGNAL_LIGHT_SERVER_DRY_RUN", "1");
+
+    let response = ipc::request(
+        &config,
+        &RuntimeCommand {
+            action: "status".to_string(),
+            session_key: None,
+            signal_name: None,
+            owner_pid: None,
+            speed: None,
+            reply_to: None,
+        },
+        true,
+    )
+    .unwrap();
+
+    assert!(response.ok);
+    assert_eq!(response.aggregate.as_deref(), Some("idle"));
+    common::stop_runtime(&config);
+}
+
+#[test]
 fn request_times_out_when_no_server_response_arrives() {
     let _guard = common::env_lock();
     let (_tempdir, mut config) = common::temp_config();

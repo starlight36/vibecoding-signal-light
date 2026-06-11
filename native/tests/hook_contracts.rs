@@ -24,6 +24,18 @@ fn codex_failure_payload_maps_to_blocked() {
 }
 
 #[test]
+fn codex_transient_error_message_does_not_force_blocked() {
+    let input = codex::CodexHookInput {
+        event_name: "PostToolUse".to_string(),
+        payload: serde_json::json!({
+            "error_message": "retrying after transient error",
+            "session_id": "codex-session"
+        }),
+    };
+    assert_eq!(codex::choose_signal(&input), "tool_done");
+}
+
+#[test]
 fn codex_session_key_prefers_turn_id_over_session_and_cwd() {
     let key = codex::session_key(
         &codex::CodexHookInput {
