@@ -50,7 +50,7 @@ The current reference build uses:
 | --- | --- |
 | MCP2221A USB GPIO adapter | Drives the traffic light from a Mac/Linux machine over USB |
 | 3-light traffic signal model | Red, yellow, and green LEDs or lamp modules |
-| Python + EasyMCP2221 | Local GPIO control, no network service required |
+| Rust native runtime | Local GPIO control, no Python environment or network service required |
 
 当前参考硬件：
 
@@ -58,7 +58,7 @@ The current reference build uses:
 | --- | --- |
 | MCP2221A USB GPIO 转接板 | 通过 USB 从电脑控制 GPIO |
 | 三色交通信号灯模型 | 红、黄、绿三路 LED 或灯模块 |
-| Python + EasyMCP2221 | 本地控制 GPIO，不需要额外云服务 |
+| Rust 原生运行时 | 本地控制 GPIO，不需要 Python 环境或额外云服务 |
 
 Default wiring is active-low:
 
@@ -167,7 +167,7 @@ The work cycle avoids software PWM on plain GPIO hardware, because USB GPIO timi
 - Claude Code hook adapter.
 - Session-aware aggregation for multiple concurrent agent sessions.
 - Red and yellow alerts are never hidden by another session starting work.
-- Background worker keeps animations persistent while hooks return quickly.
+- Local display server keeps animations persistent while hooks return quickly.
 - Dry-run mode for testing without hardware.
 - Environment-based GPIO mapping for custom builds.
 
@@ -176,17 +176,86 @@ The work cycle avoids software PWM on plain GPIO hardware, because USB GPIO timi
 - 支持 Claude Code hook。
 - 支持多个 Agent 会话并发时的状态聚合。
 - 红灯/黄灯告警不会被另一个会话的工作态覆盖。
-- 后台 worker 保持灯效持续运行，hook 本身快速返回。
+- 本地显示 server 保持灯效持续运行，hook 本身快速返回。
 - 支持无硬件 dry-run 预览。
 - 支持通过环境变量调整 GPIO 接线。
 
+## Migrating From the Earlier Python Version / 从早期 Python 版本迁移到最新版 Rust 运行时
+
+Signal Light has moved from the earlier Python/uv script runtime to the latest Rust-native runtime. The migration was made because this project now behaves more like a small native hardware utility than an application script: hooks need to return quickly, one local server needs to own the persistent lamp animation, and users should not need to debug Python/uv environments just to drive a desk light. See [PR #8](https://github.com/starlight36/vibecoding-signal-light/pull/8) for the full migration context and implementation details.
+
+Signal Light 已经从早期的 Python/uv 脚本运行时迁移到最新版 Rust 原生运行时。迁移的原因是：这个项目现在更像一个小型原生硬件工具，而不是普通应用脚本；hook 需要快速返回，本地 server 需要持续持有灯的动画和状态，用户也不应该为了驱动桌面信号灯去排查 Python/uv 环境问题。完整迁移背景和实现细节见 [PR #8](https://github.com/starlight36/vibecoding-signal-light/pull/8)。
+
+The current wrapper scripts no longer run `python -m signal_light`, do not require `uv sync`, and do not use a repository `.venv`. Build the Rust binary or download a release archive before running the commands below.
+
+当前 wrapper 不再执行 `python -m signal_light`，不需要 `uv sync`，也不依赖仓库里的 `.venv`。运行下面的命令前，请先构建 Rust 二进制，或下载对应平台的 release 包。
+
+If you still need the old Python implementation, use the [`legacy-python-main`](https://github.com/starlight36/vibecoding-signal-light/tree/legacy-python-main) branch.
+
+如果你仍然需要旧的 Python 实现，可以查看 [`legacy-python-main`](https://github.com/starlight36/vibecoding-signal-light/tree/legacy-python-main) 分支。
+
+If you are upgrading from the Python version:
+
+1. Build or install the native binary:
+
+   ```bash
+   cargo build --manifest-path native/Cargo.toml --release
+   ```
+
+2. Reinstall or repair hooks so Codex and Claude Code configs point at the native wrappers:
+
+   ```bash
+   ./scripts/install-hooks --all -y
+   ```
+
+3. Smoke-test the new runtime without hardware:
+
+   ```bash
+   ./scripts/signal-light play working --dry-run
+   ./scripts/signal-light status
+   ```
+
+4. The old Python project files (`pyproject.toml`, `uv.lock`, `.python-version`, and `signal_light/`) have been removed. Local `.venv` or `.pytest_cache` directories can be deleted if you only used them for Signal Light.
+
+如果你正在从 Python 版本升级：
+
+1. 构建或安装原生二进制：
+
+   ```bash
+   cargo build --manifest-path native/Cargo.toml --release
+   ```
+
+2. 重新安装或修复 hooks，让 Codex 和 Claude Code 配置指向新的原生 wrapper：
+
+   ```bash
+   ./scripts/install-hooks --all -y
+   ```
+
+3. 先用 dry-run 做一次无硬件烟测：
+
+   ```bash
+   ./scripts/signal-light play working --dry-run
+   ./scripts/signal-light status
+   ```
+
+4. 旧的 Python 项目文件（`pyproject.toml`、`uv.lock`、`.python-version`、`signal_light/`）已经移除。如果本地 `.venv` 或 `.pytest_cache` 只是给 Signal Light 用的，也可以删掉。
+
 ## Quick Start / 快速开始
 
-Install dependencies with your preferred Python workflow. With `uv`:
+Build the native runtime:
 
 ```bash
-uv sync
+cargo build --manifest-path native/Cargo.toml --release
 ```
+
+Or download a prebuilt release archive for your platform:
+
+- `signal-light-<version>-macos-aarch64.tar.gz`
+- `signal-light-<version>-macos-x86_64.tar.gz`
+- `signal-light-<version>-linux-amd64.tar.gz`
+- `signal-light-<version>-linux-arm64.tar.gz`
+
+Each archive contains `bin/signal-light-native` plus the `scripts/` wrappers, so the wrapper commands below work from the unpacked directory without extra setup.
 
 List the signal language:
 
@@ -208,6 +277,12 @@ Run a wiring test on the real MCP2221A setup:
 ./scripts/signal-light test
 ```
 
+Expected hardware-test outcome on the reference build:
+
+- default active-low wiring: red -> yellow -> green -> all three on -> command exits
+- active-high wiring: export `SIGNAL_LIGHT_ACTIVE_LOW=0` first, then expect the same logical order
+- missing or busy hardware: the command exits non-zero with a concise MCP2221A diagnostic instead of hanging
+
 Play real signals:
 
 ```bash
@@ -216,11 +291,15 @@ Play real signals:
 ./scripts/signal-light play idle
 ```
 
-The wrapper scripts avoid writing `__pycache__` files in the repository. By default they use `.venv/bin/python` when it exists, then fall back to `python3`. If you want wrappers to run through `uv`, set:
+The wrapper scripts require a built native binary. They look first at `SIGNAL_LIGHT_NATIVE_BIN`, then `bin/signal-light-native`, then `native/target/release/signal-light-native`, then `native/target/debug/signal-light-native`:
 
 ```bash
-export SIGNAL_LIGHT_USE_UV=1
+export SIGNAL_LIGHT_NATIVE_BIN=/absolute/path/to/signal-light-native
 ```
+
+If no native binary is available, the wrappers exit with a concise build instruction instead of falling back to Python.
+
+Runtime state is stored in a per-user directory by default: `$XDG_STATE_HOME/signal-light` when set, `~/Library/Application Support/signal-light` on macOS, or `~/.local/state/signal-light` on Linux. Override it with `SIGNAL_LIGHT_STATE_DIR` if you need a custom location.
 
 ## Codex Integration / Codex 集成
 
@@ -233,6 +312,10 @@ The easiest way to install or repair local hooks is the built-in wizard:
 ```
 
 The wizard detects supported local agents, validates the current hook files, creates timestamped backups, and installs only the Signal Light hook entries while keeping other hooks on the same events.
+
+The hook installer is implemented in the native binary as `signal-light-native install-hooks`; the `./scripts/install-hooks` wrapper uses that command directly.
+
+The first hook or `play` command auto-starts a local Signal Light server process. That server owns the shared display state, the per-session state, and the animation loop, keeping the single physical lamp in sync for all local agent clients. `status` reports both the session aggregate and the actual `display_signal` currently owned by the server.
 
 安装或修复本地 hook 最简单的方式是内置向导：
 
@@ -262,8 +345,8 @@ Recommended hook mapping:
 | `PreToolUse` | Working cycle |
 | `PostToolUse` | Working cycle |
 | `PermissionRequest` | Red flashing |
-| `Stop` | Clear normal working state |
-| `SessionEnd` | Brief green completion blink, then current aggregate state |
+| `Stop` | Green completion cue, then aggregate state without that session's normal work |
+| `SessionEnd` | Session cleanup; if still tracked, brief green completion blink, then current aggregate state |
 
 See [docs/LAMP_LANGUAGE.md](docs/LAMP_LANGUAGE.md) for a complete `~/.codex/hooks.json` example.
 
@@ -285,8 +368,8 @@ Codex hook 可以直接把事件名传给 wrapper：
 | `PreToolUse` | 工作循环 |
 | `PostToolUse` | 工作循环 |
 | `PermissionRequest` | 红灯闪烁 |
-| `Stop` | 清理普通工作态 |
-| `SessionEnd` | 绿灯短闪提示完成，然后恢复当前聚合状态 |
+| `Stop` | 绿灯提示完成，然后恢复去掉该会话普通工作态后的聚合状态 |
+| `SessionEnd` | 会话清理；如果该会话仍被跟踪，则绿灯短闪提示完成，然后恢复当前聚合状态 |
 
 完整 `~/.codex/hooks.json` 示例见 [docs/LAMP_LANGUAGE.md](docs/LAMP_LANGUAGE.md)。
 
@@ -311,8 +394,8 @@ Supported Claude Code events include:
 | `PostToolUseFailure` | Red flashing |
 | `Notification` | Yellow flashing |
 | `PermissionRequest` | Red flashing |
-| `Stop` | Clear normal working state |
-| `SessionEnd` | Brief green completion blink, then current aggregate state |
+| `Stop` | Green completion cue, then aggregate state without that session's normal work |
+| `SessionEnd` | Session cleanup; if still tracked, brief green completion blink, then current aggregate state |
 
 Claude Code 会通过 stdin 传入 JSON hook 数据，因此 wrapper 通常不需要额外参数：
 
@@ -333,8 +416,8 @@ echo '{"event":"Notification","session_id":"demo"}' | ./scripts/claude-code-sign
 | `PostToolUseFailure` | 红灯闪烁 |
 | `Notification` | 黄灯闪烁 |
 | `PermissionRequest` | 红灯闪烁 |
-| `Stop` | 清理普通工作态 |
-| `SessionEnd` | 绿灯短闪提示完成，然后恢复当前聚合状态 |
+| `Stop` | 绿灯提示完成，然后恢复去掉该会话普通工作态后的聚合状态 |
+| `SessionEnd` | 会话清理；如果该会话仍被跟踪，则绿灯短闪提示完成，然后恢复当前聚合状态 |
 
 See [docs/LAMP_LANGUAGE.md](docs/LAMP_LANGUAGE.md) for a complete `~/.claude/settings.json` example.
 
@@ -348,9 +431,9 @@ The runtime stores the latest state for each agent session and shows the highest
 red flashing > yellow flashing > working cycle > steady green
 ```
 
-That means one session waiting for permission will stay red even if another session starts working. A normal `Stop` only clears non-urgent working state; it does not erase an existing red alert.
+That means one session waiting for permission will stay red even if another session starts working. A normal `Stop` only clears non-urgent working state; it does not erase an existing red alert. The local server also removes sessions whose recorded owner process has exited, which keeps a killed local run from leaving the lamp stuck in an old working state.
 
-When one tracked session ends while other sessions are still running, the runtime briefly flashes green as a completion cue, then restores the current aggregate state. If all sessions have ended, it settles on steady green. Red or yellow alerts are not interrupted by this completion cue.
+When one tracked turn or session ends while other sessions are still running, the runtime briefly flashes green as a completion cue, then restores the current aggregate state. If all sessions have ended, it settles on steady green. If it remains idle, the light turns fully off after `SIGNAL_LIGHT_IDLE_SLEEP_SECONDS` (10 minutes by default). Red or yellow alerts are not interrupted by this completion cue.
 
 运行时会记录每个 Agent 会话的最新状态，并把最高优先级状态显示到真实信号灯上：
 

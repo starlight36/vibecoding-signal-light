@@ -1,0 +1,213 @@
+name: CI and Release
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version, for example v0.1.0. Required when publishing manually."
+        required: false
+        type: string
+      publish_release:
+        description: "Create or update a GitHub Release when run manually."
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  prepare:
+    name: Prepare release context
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.context.outputs.version }}
+      publish: ${{ steps.context.outputs.publish }}
+    steps:
+      - name: Resolve version and publish mode
+        id: context
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          input_version="${{ github.event.inputs.version }}"
+          input_publish="${{ github.event.inputs.publish_release }}"
+
+          if [[ -n "$input_version" ]]; then
+            version="$input_version"
+          elif [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
+            version="$GITHUB_REF_NAME"
+          else
+            version="snapshot-${GITHUB_SHA::7}"
+          fi
+
+          if [[ "$GITHUB_REF_TYPE" != "tag" && "$input_publish" == "true" && -z "$input_version" ]]; then
+            echo "::error::Manual release publishing requires a version input, for example v0.1.0."
+            exit 1
+          fi
+
+          version="${version//\//-}"
+          publish="false"
+          if [[ "$GITHUB_REF_TYPE" == "tag" || "$input_publish" == "true" ]]; then
+            publish="true"
+          fi
+
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "publish=$publish" >> "$GITHUB_OUTPUT"
+
+  verify:
+    name: Verify Rust runtime
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends pkg-config libudev-dev
+
+      - name: Prepare Rust toolchain
+        run: |
+          rustup toolchain install stable --profile minimal --no-self-update
+          rustup default stable
+          rustup component add rustfmt clippy
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            native/target
+          key: cargo-verify-${{ runner.os }}-${{ hashFiles('native/Cargo.lock') }}
+          restore-keys: |
+            cargo-verify-${{ runner.os }}-
+
+      - name: Check formatting
+        run: cargo fmt --manifest-path native/Cargo.toml --check
+
+      - name: Run clippy
+        run: cargo clippy --manifest-path native/Cargo.toml --all-targets -- -D warnings
+
+      - name: Run tests
+        run: cargo test --manifest-path native/Cargo.toml --locked
+
+      - name: Run release tests
+        run: cargo test --manifest-path native/Cargo.toml --release --locked
+
+  package:
+    name: Package ${{ matrix.platform }}
+    needs:
+      - prepare
+      - verify
+    if: github.ref_type == 'tag' || github.event_name == 'workflow_dispatch'
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-aarch64
+            runner: macos-15
+            target: aarch64-apple-darwin
+          - platform: macos-x86_64
+            runner: macos-15-intel
+            target: x86_64-apple-darwin
+          - platform: linux-amd64
+            runner: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+          - platform: linux-arm64
+            runner: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends pkg-config libudev-dev
+
+      - name: Prepare Rust toolchain
+        run: |
+          rustup toolchain install stable --profile minimal --no-self-update
+          rustup default stable
+          rustup target add ${{ matrix.target }}
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            native/target
+          key: cargo-package-${{ runner.os }}-${{ runner.arch }}-${{ matrix.target }}-${{ hashFiles('native/Cargo.lock') }}
+          restore-keys: |
+            cargo-package-${{ runner.os }}-${{ runner.arch }}-${{ matrix.target }}-
+
+      - name: Build release binary
+        run: cargo build --manifest-path native/Cargo.toml --release --locked --target ${{ matrix.target }}
+
+      - name: Test release binary
+        run: cargo test --manifest-path native/Cargo.toml --release --locked --target ${{ matrix.target }}
+
+      - name: Package release archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          binary="native/target/${{ matrix.target }}/release/signal-light-native"
+          ./scripts/package-release.sh "${{ needs.prepare.outputs.version }}" "${{ matrix.platform }}" "$binary" dist
+
+      - name: Upload release archive artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: signal-light-${{ needs.prepare.outputs.version }}-${{ matrix.platform }}
+          path: dist/*.tar.gz
+          if-no-files-found: error
+
+  publish:
+    name: Publish GitHub Release
+    needs:
+      - prepare
+      - package
+    if: needs.prepare.outputs.publish == 'true'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Download release archives
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Generate checksums
+        run: |
+          cd dist
+          sha256sum *.tar.gz > SHA256SUMS
+
+      - name: Create or update GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          set -euo pipefail
+
+          if gh release view "$VERSION" >/dev/null 2>&1; then
+            gh release upload "$VERSION" dist/*.tar.gz dist/SHA256SUMS --clobber
+          else
+            gh release create "$VERSION" dist/*.tar.gz dist/SHA256SUMS \
+              --target "$GITHUB_SHA" \
+              --title "$VERSION" \
+              --generate-notes
+          fi

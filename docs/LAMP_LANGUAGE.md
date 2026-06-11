@@ -44,14 +44,14 @@ The CLI still exposes named signals so hooks and other agents can use stable wor
 | `PreToolUse` | `working` | slow green-yellow-red cycle |
 | `PostToolUse` | `tool_done` | slow green-yellow-red cycle |
 | `PermissionRequest` | `permission` | flashing red |
-| `Stop` | `turn_end` | clears non-urgent session state |
-| `SessionEnd` | `session_end` | brief green completion blink, then aggregate state |
+| `Stop` | `turn_end` | green completion cue, then aggregate state without that session's non-urgent work |
+| `SessionEnd` | `session_end` | session cleanup; if still tracked, brief green completion blink, then aggregate state |
 
-`turn_end` is a hook-only control state. It is not a public lamp pattern: it removes that session's non-urgent working state, while leaving any existing `permission` or `blocked` red alert intact.
+`turn_end` is a hook-only control state. It is not a public lamp pattern: it removes that session's non-urgent working state, briefly shows the green completion cue, then restores the aggregate state. Existing `permission` or `blocked` red alerts stay intact.
 
 If the hook payload reports failure through structured fields such as `status`, `state`, `error`, `failure`, `exception`, or a non-zero `exit_status`, the adapter uses `blocked`, which starts flashing the red light.
 
-Animated states are persistent. The command starts a small background worker and returns immediately, which keeps Codex hooks fast. The next steady state stops the worker before setting its own light. `Stop` is treated as the end of a normal turn, so it clears working state instead of flashing yellow after every response.
+Codex and Claude Code hook commands act as lightweight clients. They send events to one local Signal Light server process, which owns the global session state, the direct display override from `play`, and the display animation loop. `status` reports both the session aggregate and actual `display_signal`. `Stop` is treated as the end of a normal turn, so it clears that session's working state, shows the green completion cue, and then restores the aggregate result instead of flashing yellow after every response.
 
 The work cycle includes brightness levels for drivers that can dim LEDs. The current MCP2221A GPIO driver uses plain on/off output instead of software PWM, because USB GPIO timing makes simulated dimming visibly flicker.
 
@@ -63,7 +63,7 @@ flashing red > flashing yellow > green-yellow-red work cycle > steady green
 
 For example, if one Codex session is waiting for permission and another session starts working, the light stays flashing red. If one session is waiting for you to read a result and another session is working, the light stays flashing yellow.
 
-When a tracked session ends, the runtime briefly flashes green to make the completion visible. After that cue, it recomputes the aggregate: if other sessions are still working, the green-yellow-red cycle resumes; if no sessions remain, the light settles on steady green. Red and yellow alerts stay higher priority, so the green completion cue does not interrupt an active permission, blocked, attention, or done state.
+When a tracked session or turn ends, the runtime briefly flashes green to make the completion visible. After that cue, it recomputes the aggregate: if other sessions are still working, the green-yellow-red cycle resumes; if no sessions remain, the light settles on steady green. If the light stays idle, the server turns it fully off after `SIGNAL_LIGHT_IDLE_SLEEP_SECONDS` (10 minutes by default). The server also drops sessions whose recorded owner process has exited, so a killed local agent does not leave the lamp stuck in an old state. Red and yellow alerts stay higher priority, so the green completion cue does not interrupt an active permission, blocked, attention, or done state.
 
 ## Wiring Defaults
 
@@ -109,7 +109,9 @@ Set `SIGNAL_LIGHT_ACTIVE_LOW=0` if your signal model is wired active-high.
 
 If the wrong light turns on, adjust `SIGNAL_LIGHT_*_PIN`. If lights are inverted, adjust `SIGNAL_LIGHT_ACTIVE_LOW`.
 
-The wrapper scripts avoid writing `__pycache__` files in the repository. By default they use `.venv/bin/python` when it exists, then fall back to `python3`. Set `SIGNAL_LIGHT_USE_UV=1` if you want the wrappers to run through `uv run`.
+The wrapper scripts require the Rust native runtime. They use `SIGNAL_LIGHT_NATIVE_BIN` when set, then `bin/signal-light-native`, then `native/target/release/signal-light-native`, then `native/target/debug/signal-light-native`. If no native binary is available, they exit with a concise build instruction. Build the default release binary with `cargo build --manifest-path native/Cargo.toml --release`.
+
+Runtime state is stored in a per-user directory by default: `$XDG_STATE_HOME/signal-light` when set, `~/Library/Application Support/signal-light` on macOS, or `~/.local/state/signal-light` on Linux. Override it with `SIGNAL_LIGHT_STATE_DIR` if you need a custom location.
 
 ## Claude Code Hook Mapping
 
@@ -125,8 +127,8 @@ The wrapper scripts avoid writing `__pycache__` files in the repository. By defa
 | `SubagentStop` | `tool_done` | slow green-yellow-red cycle |
 | `PermissionRequest` | `permission` | flashing red |
 | `Notification` | `attention` | flashing yellow |
-| `Stop` | `turn_end` | clears non-urgent session state |
-| `SessionEnd` | `session_end` | brief green completion blink, then aggregate state |
+| `Stop` | `turn_end` | green completion cue, then aggregate state without that session's non-urgent work |
+| `SessionEnd` | `session_end` | session cleanup; if still tracked, brief green completion blink, then aggregate state |
 
 If `Stop` carries a `stop_reason` of `max_tokens` or `error`, the adapter uses `blocked` instead of clearing state.
 
@@ -142,7 +144,7 @@ Add hooks to `~/.claude/settings.json` (or project `.claude/settings.json`):
         "hooks": [
           {
             "type": "command",
-            "command": "/Users/liusixian/Develop/starlight36/signal-light/scripts/claude-code-signal-hook",
+            "command": "/path/to/signal-light/scripts/claude-code-signal-hook",
             "timeout": 5
           }
         ],
@@ -154,7 +156,7 @@ Add hooks to `~/.claude/settings.json` (or project `.claude/settings.json`):
         "hooks": [
           {
             "type": "command",
-            "command": "/Users/liusixian/Develop/starlight36/signal-light/scripts/claude-code-signal-hook",
+            "command": "/path/to/signal-light/scripts/claude-code-signal-hook",
             "timeout": 5
           }
         ],
@@ -166,7 +168,7 @@ Add hooks to `~/.claude/settings.json` (or project `.claude/settings.json`):
         "hooks": [
           {
             "type": "command",
-            "command": "/Users/liusixian/Develop/starlight36/signal-light/scripts/claude-code-signal-hook",
+            "command": "/path/to/signal-light/scripts/claude-code-signal-hook",
             "timeout": 5
           }
         ],
@@ -178,7 +180,7 @@ Add hooks to `~/.claude/settings.json` (or project `.claude/settings.json`):
         "hooks": [
           {
             "type": "command",
-            "command": "/Users/liusixian/Develop/starlight36/signal-light/scripts/claude-code-signal-hook",
+            "command": "/path/to/signal-light/scripts/claude-code-signal-hook",
             "timeout": 5
           }
         ],
@@ -190,7 +192,7 @@ Add hooks to `~/.claude/settings.json` (or project `.claude/settings.json`):
         "hooks": [
           {
             "type": "command",
-            "command": "/Users/liusixian/Develop/starlight36/signal-light/scripts/claude-code-signal-hook",
+            "command": "/path/to/signal-light/scripts/claude-code-signal-hook",
             "timeout": 5
           }
         ],
@@ -202,7 +204,7 @@ Add hooks to `~/.claude/settings.json` (or project `.claude/settings.json`):
         "hooks": [
           {
             "type": "command",
-            "command": "/Users/liusixian/Develop/starlight36/signal-light/scripts/claude-code-signal-hook",
+            "command": "/path/to/signal-light/scripts/claude-code-signal-hook",
             "timeout": 10
           }
         ],
@@ -214,7 +216,7 @@ Add hooks to `~/.claude/settings.json` (or project `.claude/settings.json`):
         "hooks": [
           {
             "type": "command",
-            "command": "/Users/liusixian/Develop/starlight36/signal-light/scripts/claude-code-signal-hook",
+            "command": "/path/to/signal-light/scripts/claude-code-signal-hook",
             "timeout": 5
           }
         ],
@@ -226,7 +228,7 @@ Add hooks to `~/.claude/settings.json` (or project `.claude/settings.json`):
         "hooks": [
           {
             "type": "command",
-            "command": "/Users/liusixian/Develop/starlight36/signal-light/scripts/claude-code-signal-hook",
+            "command": "/path/to/signal-light/scripts/claude-code-signal-hook",
             "timeout": 5
           }
         ],
@@ -238,7 +240,7 @@ Add hooks to `~/.claude/settings.json` (or project `.claude/settings.json`):
         "hooks": [
           {
             "type": "command",
-            "command": "/Users/liusixian/Develop/starlight36/signal-light/scripts/claude-code-signal-hook",
+            "command": "/path/to/signal-light/scripts/claude-code-signal-hook",
             "timeout": 5
           }
         ],
@@ -263,7 +265,7 @@ Add command hooks like this to `~/.codex/hooks.json`, keeping any existing hooks
         "hooks": [
           {
             "type": "command",
-            "command": "/Users/liusixian/Develop/starlight36/signal-light/scripts/codex-signal-hook UserPromptSubmit",
+            "command": "/path/to/signal-light/scripts/codex-signal-hook UserPromptSubmit",
             "timeout": 5
           }
         ]
@@ -274,7 +276,7 @@ Add command hooks like this to `~/.codex/hooks.json`, keeping any existing hooks
         "hooks": [
           {
             "type": "command",
-            "command": "/Users/liusixian/Develop/starlight36/signal-light/scripts/codex-signal-hook PreToolUse",
+            "command": "/path/to/signal-light/scripts/codex-signal-hook PreToolUse",
             "timeout": 5
           }
         ]
@@ -285,7 +287,7 @@ Add command hooks like this to `~/.codex/hooks.json`, keeping any existing hooks
         "hooks": [
           {
             "type": "command",
-            "command": "/Users/liusixian/Develop/starlight36/signal-light/scripts/codex-signal-hook PermissionRequest",
+            "command": "/path/to/signal-light/scripts/codex-signal-hook PermissionRequest",
             "timeout": 10
           }
         ]
@@ -296,7 +298,7 @@ Add command hooks like this to `~/.codex/hooks.json`, keeping any existing hooks
         "hooks": [
           {
             "type": "command",
-            "command": "/Users/liusixian/Develop/starlight36/signal-light/scripts/codex-signal-hook Stop",
+            "command": "/path/to/signal-light/scripts/codex-signal-hook Stop",
             "timeout": 5
           }
         ]

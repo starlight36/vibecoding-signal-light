@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Signal Light Status Output",
+  "type": "object",
+  "required": [
+    "aggregate",
+    "display_signal",
+    "sessions"
+  ],
+  "properties": {
+    "aggregate": {
+      "type": "string",
+      "minLength": 1
+    },
+    "display_signal": {
+      "type": "string",
+      "minLength": 1
+    },
+    "sessions": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": [
+          "signal",
+          "updated_at"
+        ],
+        "properties": {
+          "signal": {
+            "type": "string",
+            "minLength": 1
+          },
+          "updated_at": {
+            "type": "number"
+          },
+          "owner_pid": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "owner_pid_source": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "additionalProperties": true
+      }
+    }
+  },
+  "additionalProperties": true
+}
