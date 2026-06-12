@@ -387,6 +387,7 @@ fn native_runtime_candidates() -> Vec<PathBuf> {
         candidates.push(PathBuf::from(explicit));
     }
     let project_root = project_root();
+    candidates.push(project_root.join("bin").join("signal-light-native"));
     candidates.push(
         project_root
             .join("native")
@@ -1127,6 +1128,20 @@ mod tests {
         let resolved = super::project_root();
         std::env::remove_var(super::PROJECT_ROOT_ENV);
         assert_eq!(resolved, tempdir.path());
+    }
+
+    #[test]
+    fn native_runtime_candidates_include_packaged_bin_layout() {
+        static ENV_LOCK: Mutex<()> = Mutex::new(());
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|poison| poison.into_inner());
+        let tempdir = tempdir().unwrap();
+        std::env::remove_var(super::NATIVE_BINARY_ENV);
+        std::env::set_var(super::PROJECT_ROOT_ENV, tempdir.path());
+
+        let candidates = super::native_runtime_candidates();
+
+        std::env::remove_var(super::PROJECT_ROOT_ENV);
+        assert!(candidates.contains(&tempdir.path().join("bin").join("signal-light-native")));
     }
 
     #[test]
