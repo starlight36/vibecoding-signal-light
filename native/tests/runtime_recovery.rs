@@ -131,7 +131,7 @@ fn session_end_notice_restores_idle_without_stale_alert() {
         true,
     )
     .unwrap();
-    ipc::request(
+    let ended = ipc::request(
         &config,
         &RuntimeCommand {
             action: "session_signal".to_string(),
@@ -145,10 +145,9 @@ fn session_end_notice_restores_idle_without_stale_alert() {
     )
     .unwrap();
 
-    let immediate = ipc::status(&config).unwrap();
-    assert_eq!(immediate.aggregate, "idle");
-    assert_eq!(immediate.display_signal, "session_done");
-    assert!(immediate.sessions.is_empty());
+    assert_eq!(ended.aggregate.as_deref(), Some("idle"));
+    assert_eq!(ended.display_signal.as_deref(), Some("session_done"));
+    assert!(ended.sessions.is_empty());
 
     thread::sleep(Duration::from_millis(200));
     let settled = ipc::status(&config).unwrap();
