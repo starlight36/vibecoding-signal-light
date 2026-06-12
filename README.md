@@ -470,3 +470,9 @@ This is a small, hackable hardware companion for AI-assisted development. It is 
 If your AI agent has become part of your workflow, give it a signal light.
 
 如果 AI Agent 已经成了你的工作流的一部分，给它一盏真正的状态灯。
+
+## License / 许可证
+
+This project is licensed under the MIT License. See [LICENSE](LICENSE).
+
+本项目使用 MIT 许可证开源。详见 [LICENSE](LICENSE)。

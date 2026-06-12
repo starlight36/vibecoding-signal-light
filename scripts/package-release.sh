@@ -35,6 +35,7 @@ for script in signal-light install-hooks codex-signal-hook claude-code-signal-ho
 done
 
 install -m 644 "$ROOT_DIR/README.md" "$WORK_DIR/README.md"
+install -m 644 "$ROOT_DIR/LICENSE" "$WORK_DIR/LICENSE"
 install -m 644 "$ROOT_DIR/docs/LAMP_LANGUAGE.md" "$WORK_DIR/docs/LAMP_LANGUAGE.md"
 if [[ -f "$ROOT_DIR/docs/images/demo.jpg" ]]; then
   install -m 644 "$ROOT_DIR/docs/images/demo.jpg" "$WORK_DIR/docs/images/demo.jpg"
