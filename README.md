@@ -248,6 +248,12 @@ Build the native runtime:
 cargo build --manifest-path native/Cargo.toml --release
 ```
 
+Or install the packaged release with Homebrew:
+
+```bash
+brew install starlight36/tap/signal-light
+```
+
 Or download a prebuilt release archive for your platform:
 
 - `signal-light-<version>-macos-aarch64.tar.gz`

@@ -9,6 +9,7 @@ use serde_json::{Map, Value};
 use crate::error::{Result, SignalLightError};
 
 pub const NATIVE_BINARY_ENV: &str = "SIGNAL_LIGHT_NATIVE_BIN";
+pub const PROJECT_ROOT_ENV: &str = "SIGNAL_LIGHT_PROJECT_ROOT";
 const CODEX_EVENTS: &[(&str, u64)] = &[
     ("SessionStart", 5),
     ("UserPromptSubmit", 5),
@@ -348,10 +349,36 @@ fn resolve_home(home: Option<&Path>) -> Result<PathBuf> {
 }
 
 fn project_root() -> PathBuf {
+    if let Some(root) = env::var_os(PROJECT_ROOT_ENV).map(PathBuf::from) {
+        return root;
+    }
+    if let Some(root) = release_layout_root() {
+        return root;
+    }
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .expect("project root")
         .to_path_buf()
+}
+
+fn release_layout_root() -> Option<PathBuf> {
+    let executable = std::env::current_exe().ok()?;
+    release_layout_root_from_executable(&executable)
+}
+
+fn release_layout_root_from_executable(executable: &Path) -> Option<PathBuf> {
+    let bin_dir = executable.parent()?;
+    let root = bin_dir.parent()?;
+    let scripts_dir = root.join("scripts");
+    let native_binary = bin_dir.join("signal-light-native");
+    if scripts_dir.join("codex-signal-hook").is_file()
+        && scripts_dir.join("claude-code-signal-hook").is_file()
+        && native_binary.is_file()
+    {
+        Some(root.to_path_buf())
+    } else {
+        None
+    }
 }
 
 fn native_runtime_candidates() -> Vec<PathBuf> {
@@ -798,7 +825,8 @@ fn shell_quote(value: &str) -> String {
 mod tests {
     use std::fs;
     use std::io::Cursor;
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
+    use std::sync::Mutex;
 
     use serde_json::{Map, Value};
     use tempfile::tempdir;
@@ -1088,5 +1116,35 @@ mod tests {
         assert!(output.contains("Wrappers require the native runtime."));
         assert!(output.contains("SIGNAL_LIGHT_NATIVE_BIN"));
         assert_eq!(native_runtime_repair_hint(), native_runtime_repair_hint());
+    }
+
+    #[test]
+    fn project_root_prefers_explicit_environment_override() {
+        static ENV_LOCK: Mutex<()> = Mutex::new(());
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|poison| poison.into_inner());
+        let tempdir = tempdir().unwrap();
+        std::env::set_var(super::PROJECT_ROOT_ENV, tempdir.path());
+        let resolved = super::project_root();
+        std::env::remove_var(super::PROJECT_ROOT_ENV);
+        assert_eq!(resolved, tempdir.path());
+    }
+
+    #[test]
+    fn release_layout_root_detects_packaged_archive_layout() {
+        let tempdir = tempdir().unwrap();
+        let package_root = tempdir.path().join("signal-light-v0.1.1-macos-aarch64");
+        let bin_dir = package_root.join("bin");
+        let scripts_dir = package_root.join("scripts");
+        fs::create_dir_all(&bin_dir).unwrap();
+        fs::create_dir_all(&scripts_dir).unwrap();
+        fs::write(bin_dir.join("signal-light-native"), "").unwrap();
+        fs::write(scripts_dir.join("codex-signal-hook"), "").unwrap();
+        fs::write(scripts_dir.join("claude-code-signal-hook"), "").unwrap();
+
+        let fake_exe = bin_dir.join("signal-light-native");
+        assert_eq!(
+            super::release_layout_root_from_executable(Path::new(&fake_exe)),
+            Some(package_root)
+        );
     }
 }
