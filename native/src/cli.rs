@@ -8,7 +8,7 @@ use clap::{Parser, Subcommand};
 use crate::config::RuntimeConfig;
 use crate::drivers::{create_driver, ChannelLevels};
 use crate::error::{Result, SignalLightError};
-use crate::hooks::{claude_code, codex, owner_pid_from_payload_or_env};
+use crate::hooks::{claude_code, codex, opencode, owner_pid_from_payload_or_env};
 use crate::install_hooks;
 use crate::model::{Frame, RuntimeCommand, SignalDefinition};
 use crate::runtime::{ipc, server};
@@ -43,6 +43,14 @@ enum Commands {
         dry_run: bool,
     },
     ClaudeCodeHook {
+        event: Option<String>,
+        #[arg(long = "event")]
+        event_option: Option<String>,
+        #[arg(long)]
+        dry_run: bool,
+    },
+    #[command(name = "opencode-hook")]
+    OpenCodeHook {
         event: Option<String>,
         #[arg(long = "event")]
         event_option: Option<String>,
@@ -101,6 +109,11 @@ fn run() -> Result<i32> {
             event_option,
             dry_run,
         } => run_claude_code_hook(&config, event_option.or(event), dry_run),
+        Commands::OpenCodeHook {
+            event,
+            event_option,
+            dry_run,
+        } => run_opencode_hook(&config, event_option.or(event), dry_run),
         Commands::InstallHooks {
             agents,
             all,
@@ -206,6 +219,22 @@ fn run_claude_code_hook(
     let input = claude_code::read_input(&argv, &stdin_text);
     let signal_name = claude_code::choose_signal(&input);
     let session_key = claude_code::session_key(&input, &env);
+    let owner_pid = owner_pid_from_payload_or_env(&input.payload, &env);
+    play_hook_signal(config, &signal_name, &session_key, owner_pid, dry_run)
+}
+
+fn run_opencode_hook(
+    config: &RuntimeConfig,
+    event_override: Option<String>,
+    dry_run: bool,
+) -> Result<i32> {
+    let stdin_text = read_stdin()?;
+    let env = env_map();
+    let dry_run = dry_run || env_flag(&env, "SIGNAL_LIGHT_DRY_RUN");
+    let argv = hook_argv("signal-light-native", event_override);
+    let input = opencode::read_input(&argv, &stdin_text);
+    let signal_name = opencode::choose_signal(&input);
+    let session_key = opencode::session_key(&input, &env);
     let owner_pid = owner_pid_from_payload_or_env(&input.payload, &env);
     play_hook_signal(config, &signal_name, &session_key, owner_pid, dry_run)
 }

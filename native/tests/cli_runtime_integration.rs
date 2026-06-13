@@ -289,6 +289,38 @@ fn install_hooks_cli_dry_run_does_not_write_config() {
 }
 
 #[test]
+fn install_hooks_cli_writes_opencode_plugin() {
+    let _guard = common::env_lock();
+    let tempdir = tempfile::tempdir().unwrap();
+
+    let output = Command::new(common::native_binary())
+        .arg("install-hooks")
+        .arg("--agent")
+        .arg("opencode")
+        .arg("-y")
+        .env("HOME", tempdir.path())
+        .output()
+        .unwrap();
+
+    assert!(
+        output.status.success(),
+        "stderr={}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(String::from_utf8_lossy(&output.stdout).contains("Installed OpenCode: installed"));
+
+    let plugin_path = tempdir
+        .path()
+        .join(".config")
+        .join("opencode")
+        .join("plugins")
+        .join("signal-light.ts");
+    let plugin = fs::read_to_string(plugin_path).unwrap();
+    assert!(plugin.contains("const WRAPPER_SCRIPT = "));
+    assert!(plugin.contains("scripts/opencode-signal-hook"));
+}
+
+#[test]
 fn native_help_includes_install_hooks() {
     let output = Command::new(common::native_binary())
         .arg("--help")
@@ -360,4 +392,29 @@ fn codex_hook_wrapper_uses_native_dry_run() {
         String::from_utf8_lossy(&output.stderr)
     );
     assert!(String::from_utf8_lossy(&output.stdout).contains("yellow="));
+}
+
+#[test]
+fn opencode_hook_wrapper_uses_native_dry_run() {
+    let output = Command::new(script_path("opencode-signal-hook"))
+        .arg("--dry-run")
+        .env("SIGNAL_LIGHT_NATIVE_BIN", common::native_binary())
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .and_then(|mut child| {
+            child.stdin.as_mut().unwrap().write_all(
+                br#"{"hook_event_name":"permission.asked","session_id":"wrapper-session"}"#,
+            )?;
+            child.wait_with_output()
+        })
+        .unwrap();
+
+    assert!(
+        output.status.success(),
+        "stderr={}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(String::from_utf8_lossy(&output.stdout).contains("red="));
 }

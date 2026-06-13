@@ -93,6 +93,7 @@ Set `SIGNAL_LIGHT_ACTIVE_LOW=0` if your signal model is wired active-high.
 ./scripts/signal-light play working --dry-run
 ./scripts/signal-light play attention --dry-run
 ./scripts/signal-light codex-hook PermissionRequest --dry-run
+printf '{"hook_event_name":"permission.asked","session_id":"demo"}' | ./scripts/opencode-signal-hook --dry-run
 ```
 
 ## Try It With Hardware
@@ -252,6 +253,69 @@ Add hooks to `~/.claude/settings.json` (or project `.claude/settings.json`):
 ```
 
 Note: Unlike Codex hooks where the event name must be passed as an argument, Claude Code passes the event as JSON on stdin, so the hook command does not need an event argument.
+
+## OpenCode Hook Mapping
+
+| OpenCode event | Signal | Light |
+| --- | --- | --- |
+| `session.created` | `session_start` | steady green |
+| `session.idle` | `turn_end` | green completion cue, then aggregate state without that session's non-urgent work |
+| `session.error` | `blocked` | flashing red |
+| `tool.execute.before` | `working` | slow green-yellow-red cycle |
+| `tool.execute.after` | `tool_done` | slow green-yellow-red cycle unless the payload reports a failure |
+| `permission.asked` | `permission` | flashing red |
+| `command.executed` | `working` | slow green-yellow-red cycle |
+
+If the payload sets `signal`, `signal_name`, or `lamp_signal`, the adapter honors that explicit public signal. If `status`, `state`, error markers, or tool output report a failure, the adapter uses `blocked`.
+
+## OpenCode Plugin Example
+
+Install the generated plugin with:
+
+```bash
+./scripts/install-hooks --agent opencode -y
+```
+
+That writes `~/.config/opencode/plugins/signal-light.ts` with content like:
+
+```ts
+import type { Plugin } from "@opencode-ai/plugin"
+
+const WRAPPER_SCRIPT = "/path/to/signal-light/scripts/opencode-signal-hook"
+
+const EVENT_SIGNALS: Record<string, string> = {
+  "session.created": "session_start",
+  "session.idle": "turn_end",
+  "session.error": "blocked",
+  "tool.execute.before": "working",
+  "tool.execute.after": "tool_done",
+  "permission.asked": "permission",
+  "command.executed": "working",
+}
+
+const SignalLightPlugin: Plugin = async ({ $, directory }) => {
+  return {
+    event: async ({ event }) => {
+      const signalName = EVENT_SIGNALS[event.type]
+      if (!signalName) return
+
+      const payload = {
+        hook_event_name: event.type,
+        signal: signalName,
+        session_id: event.properties?.sessionID,
+        cwd: event.properties?.cwd || directory,
+        owner_pid: event.properties?.pid,
+      }
+
+      await $`printf %s ${JSON.stringify(payload)} | ${WRAPPER_SCRIPT}`
+        .quiet()
+        .catch(() => {})
+    },
+  }
+}
+
+export default SignalLightPlugin
+```
 
 ## Codex hooks.json Example
 

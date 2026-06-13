@@ -10,6 +10,7 @@ use crate::error::{Result, SignalLightError};
 
 pub const NATIVE_BINARY_ENV: &str = "SIGNAL_LIGHT_NATIVE_BIN";
 pub const PROJECT_ROOT_ENV: &str = "SIGNAL_LIGHT_PROJECT_ROOT";
+const OPENCODE_PLUGIN_TEMPLATE: &str = include_str!("opencode_plugin_template.ts");
 const CODEX_EVENTS: &[(&str, u64)] = &[
     ("SessionStart", 5),
     ("UserPromptSubmit", 5),
@@ -44,6 +45,8 @@ pub struct AgentSpec {
     pub events: &'static [(&'static str, u64)],
     pub passes_event_arg: bool,
     pub uses_matcher: bool,
+    pub is_plugin_agent: bool,
+    pub plugin_template: Option<&'static str>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -171,6 +174,8 @@ pub fn supported_agents(home: Option<&Path>) -> Result<Vec<AgentSpec>> {
             events: CODEX_EVENTS,
             passes_event_arg: true,
             uses_matcher: false,
+            is_plugin_agent: false,
+            plugin_template: None,
         },
         AgentSpec {
             key: "claude-code",
@@ -180,11 +185,100 @@ pub fn supported_agents(home: Option<&Path>) -> Result<Vec<AgentSpec>> {
             events: CLAUDE_CODE_EVENTS,
             passes_event_arg: false,
             uses_matcher: true,
+            is_plugin_agent: false,
+            plugin_template: None,
+        },
+        AgentSpec {
+            key: "opencode",
+            name: "OpenCode",
+            config_path: home_dir
+                .join(".config")
+                .join("opencode")
+                .join("plugins")
+                .join("signal-light.ts"),
+            hook_script: project_root.join("scripts").join("opencode-signal-hook"),
+            events: &[],
+            passes_event_arg: false,
+            uses_matcher: false,
+            is_plugin_agent: true,
+            plugin_template: Some(OPENCODE_PLUGIN_TEMPLATE),
         },
     ])
 }
 
 pub fn inspect_agent(spec: &AgentSpec) -> Result<AgentStatus> {
+    if spec.is_plugin_agent {
+        return inspect_plugin_agent(spec);
+    }
+    inspect_json_agent(spec)
+}
+
+fn inspect_plugin_agent(spec: &AgentSpec) -> Result<AgentStatus> {
+    let config_exists = spec.config_path.exists();
+    if !config_exists {
+        return Ok(AgentStatus {
+            spec: spec.clone(),
+            installed: false,
+            config_exists: false,
+            valid_json: true,
+            missing_events: vec!["plugin file".to_string()],
+            broken_events: Vec::new(),
+            message: "plugin file missing".to_string(),
+        });
+    }
+
+    let Ok(content) = fs::read_to_string(&spec.config_path) else {
+        return Ok(AgentStatus {
+            spec: spec.clone(),
+            installed: false,
+            config_exists: true,
+            valid_json: true,
+            missing_events: vec!["plugin file".to_string()],
+            broken_events: Vec::new(),
+            message: "cannot read plugin file".to_string(),
+        });
+    };
+
+    let expected = render_plugin_file(spec)?;
+    if content == expected {
+        return Ok(AgentStatus {
+            spec: spec.clone(),
+            installed: true,
+            config_exists: true,
+            valid_json: true,
+            missing_events: Vec::new(),
+            broken_events: Vec::new(),
+            message: "installed".to_string(),
+        });
+    }
+
+    let (missing_events, broken_events, message) =
+        if content.contains("signal-light") || content.contains("opencode-signal-hook") {
+            (
+                Vec::new(),
+                vec!["plugin file".to_string()],
+                "plugin file needs refresh".to_string(),
+            )
+        } else {
+            (
+                vec!["signal-light plugin".to_string()],
+                Vec::new(),
+                "not a signal-light plugin".to_string(),
+            )
+        };
+
+    Ok(AgentStatus {
+        spec: spec.clone(),
+        installed: false,
+        config_exists: true,
+        valid_json: true,
+        missing_events,
+        broken_events,
+        message,
+    })
+}
+
+fn inspect_json_agent(spec: &AgentSpec) -> Result<AgentStatus> {
     let config_exists = spec.config_path.exists();
     let (config, valid_json) = load_json_config(&spec.config_path)?;
 
@@ -275,6 +369,48 @@ pub fn inspect_agent(spec: &AgentSpec) -> Result<AgentStatus> {
 }
 
 pub fn install_agent(spec: &AgentSpec, backup: bool) -> Result<InstallResult> {
+    if spec.is_plugin_agent {
+        return install_plugin_agent(spec, backup);
+    }
+    install_json_agent(spec, backup)
+}
+
+fn install_plugin_agent(spec: &AgentSpec, backup: bool) -> Result<InstallResult> {
+    let new_text = render_plugin_file(spec)?;
+    let original_text = match fs::read_to_string(&spec.config_path) {
+        Ok(text) => Some(text),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => None,
+        Err(error) => return Err(error.into()),
+    };
+
+    if original_text.as_deref() == Some(new_text.as_str()) {
+        let status = inspect_agent(spec)?;
+        return Ok(InstallResult {
+            status,
+            changed: false,
+            backup_path: None,
+        });
+    }
+
+    let backup_path = if backup && spec.config_path.exists() {
+        Some(backup_config(&spec.config_path)?)
+    } else {
+        None
+    };
+
+    if let Some(parent) = spec.config_path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    fs::write(&spec.config_path, new_text)?;
+    let status = inspect_agent(spec)?;
+    Ok(InstallResult {
+        status,
+        changed: true,
+        backup_path,
+    })
+}
+
+fn install_json_agent(spec: &AgentSpec, backup: bool) -> Result<InstallResult> {
     let (mut config, valid_json) = load_json_config(&spec.config_path)?;
     if !valid_json {
         config = Map::new();
@@ -327,6 +463,14 @@ pub fn install_agent(spec: &AgentSpec, backup: bool) -> Result<InstallResult> {
     })
 }
 
+fn render_plugin_file(spec: &AgentSpec) -> Result<String> {
+    let template = spec.plugin_template.ok_or_else(|| {
+        SignalLightError::InvalidUsage("plugin template not configured".to_string())
+    })?;
+    let hook_script = serde_json::to_string(spec.hook_script.to_string_lossy().as_ref())?;
+    Ok(template.replace("__HOOK_SCRIPT_PATH_JSON__", &hook_script))
+}
+
 pub fn native_runtime_repair_hint() -> String {
     let preferred = native_runtime_candidates()
         .into_iter()
@@ -373,6 +517,7 @@ fn release_layout_root_from_executable(executable: &Path) -> Option<PathBuf> {
     let native_binary = bin_dir.join("signal-light-native");
     if scripts_dir.join("codex-signal-hook").is_file()
         && scripts_dir.join("claude-code-signal-hook").is_file()
+        && scripts_dir.join("opencode-signal-hook").is_file()
         && native_binary.is_file()
     {
         Some(root.to_path_buf())
@@ -474,6 +619,7 @@ fn resolve_selection(
 fn normalize_agent_key(value: &str, statuses: &[AgentStatus]) -> Result<String> {
     let key = match value.trim().to_ascii_lowercase().as_str() {
         "claude" | "claudecode" => "claude-code".to_string(),
+        "opencode" | "opc" => "opencode".to_string(),
         other => other.to_string(),
     };
     if statuses.iter().any(|status| status.spec.key == key) {
@@ -522,6 +668,7 @@ fn parse_selection(answer: &str, statuses: &[AgentStatus]) -> Result<Vec<String>
 
         let key = match chunk {
             "claude" | "claudecode" => "claude-code".to_string(),
+            "opencode" | "opc" => "opencode".to_string(),
             _ => chunk.to_string(),
         };
         if !statuses.iter().any(|status| status.spec.key == key) {
@@ -842,7 +989,7 @@ mod tests {
         let tempdir = tempdir().unwrap();
         let agents = supported_agents(Some(tempdir.path())).unwrap();
 
-        assert_eq!(agents.len(), 2);
+        assert_eq!(agents.len(), 3);
         assert_eq!(agents[0].key, "codex");
         assert_eq!(
             agents[0].config_path,
@@ -852,6 +999,16 @@ mod tests {
         assert_eq!(
             agents[1].config_path,
             tempdir.path().join(".claude").join("settings.json")
+        );
+        assert_eq!(agents[2].key, "opencode");
+        assert_eq!(
+            agents[2].config_path,
+            tempdir
+                .path()
+                .join(".config")
+                .join("opencode")
+                .join("plugins")
+                .join("signal-light.ts")
         );
     }
 
@@ -1039,6 +1196,8 @@ mod tests {
             events: &[],
             passes_event_arg: true,
             uses_matcher: false,
+            is_plugin_agent: false,
+            plugin_template: None,
         };
 
         let command = hook_command(&spec, "Stop");
@@ -1073,6 +1232,7 @@ mod tests {
         let output = String::from_utf8(output).unwrap();
         assert!(output.contains("Would install/repair Codex"));
         assert!(output.contains("Would install/repair Claude Code"));
+        assert!(output.contains("Would install/repair OpenCode"));
     }
 
     #[test]
@@ -1095,6 +1255,7 @@ mod tests {
         let output = String::from_utf8(output).unwrap();
         assert!(output.contains("Would install/repair Codex"));
         assert!(!output.contains("Would install/repair Claude Code"));
+        assert!(!output.contains("Would install/repair OpenCode"));
     }
 
     #[test]
@@ -1155,11 +1316,41 @@ mod tests {
         fs::write(bin_dir.join("signal-light-native"), "").unwrap();
         fs::write(scripts_dir.join("codex-signal-hook"), "").unwrap();
         fs::write(scripts_dir.join("claude-code-signal-hook"), "").unwrap();
+        fs::write(scripts_dir.join("opencode-signal-hook"), "").unwrap();
 
         let fake_exe = bin_dir.join("signal-light-native");
         assert_eq!(
             super::release_layout_root_from_executable(Path::new(&fake_exe)),
             Some(package_root)
         );
+    }
+
+    #[test]
+    fn install_agent_writes_opencode_plugin_with_plain_js_path() {
+        let tempdir = tempdir().unwrap();
+        let spec = AgentSpec {
+            key: "opencode",
+            name: "OpenCode",
+            config_path: tempdir
+                .path()
+                .join(".config")
+                .join("opencode")
+                .join("plugins")
+                .join("signal-light.ts"),
+            hook_script: PathBuf::from("/tmp/signal light/scripts/opencode-signal-hook"),
+            events: &[],
+            passes_event_arg: false,
+            uses_matcher: false,
+            is_plugin_agent: true,
+            plugin_template: Some(super::OPENCODE_PLUGIN_TEMPLATE),
+        };
+
+        let result = install_agent(&spec, true).unwrap();
+
+        assert!(result.status.installed);
+        let plugin = fs::read_to_string(&spec.config_path).unwrap();
+        assert!(plugin.contains("const WRAPPER_SCRIPT = \"/"));
+        assert!(plugin.contains("scripts/opencode-signal-hook"));
+        assert!(!plugin.contains("'scripts/opencode-signal-hook'"));
     }
 }

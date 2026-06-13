@@ -1,5 +1,6 @@
 pub mod claude_code;
 pub mod codex;
+pub mod opencode;
 
 use serde_json::Value;
 
@@ -28,6 +29,8 @@ pub fn owner_pid_from_payload_or_env(
         "CODEX_OWNER_PID",
         "CLAUDE_CODE_OWNER_PID",
         "CLAUDE_OWNER_PID",
+        "OPENCODE_OWNER_PID",
+        "OPC_OWNER_PID",
     ] {
         if let Some(pid) = env
             .get(key)

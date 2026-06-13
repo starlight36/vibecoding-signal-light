@@ -1,6 +1,6 @@
 use serde_json::Value;
 
-use signal_light_native::hooks::{claude_code, codex};
+use signal_light_native::hooks::{claude_code, codex, opencode};
 use signal_light_native::model::{RuntimeSnapshot, SessionRecord};
 use signal_light_native::signals;
 
@@ -39,9 +39,14 @@ fn hook_mappings_preserve_existing_semantics() {
         event_name: "Notification".to_string(),
         payload: serde_json::json!({"session_id": "claude-session"}),
     };
+    let opencode_input = opencode::OpenCodeHookInput {
+        event_name: "permission.asked".to_string(),
+        payload: serde_json::json!({"session_id": "opencode-session"}),
+    };
 
     assert_eq!(codex::choose_signal(&codex_input), "tool_done");
     assert_eq!(claude_code::choose_signal(&claude_input), "attention");
+    assert_eq!(opencode::choose_signal(&opencode_input), "permission");
 }
 
 #[test]

@@ -2,7 +2,7 @@ mod common;
 
 use std::collections::BTreeMap;
 
-use signal_light_native::hooks::{claude_code, codex};
+use signal_light_native::hooks::{claude_code, codex, opencode};
 use signal_light_native::signals;
 
 #[test]
@@ -92,4 +92,67 @@ fn claude_session_key_falls_back_to_env_then_cwd_then_global() {
         &env,
     );
     assert_eq!(key, "claude-env-session");
+}
+
+#[test]
+fn opencode_session_created_maps_to_session_start() {
+    let input = opencode::OpenCodeHookInput {
+        event_name: "session.created".to_string(),
+        payload: serde_json::json!({"session_id": "opc-session-1"}),
+    };
+    assert_eq!(opencode::choose_signal(&input), "session_start");
+}
+
+#[test]
+fn opencode_session_idle_maps_to_turn_end() {
+    let input = opencode::OpenCodeHookInput {
+        event_name: "session.idle".to_string(),
+        payload: serde_json::json!({}),
+    };
+    assert_eq!(opencode::choose_signal(&input), signals::TURN_END_SIGNAL);
+}
+
+#[test]
+fn opencode_session_error_maps_to_blocked() {
+    let input = opencode::OpenCodeHookInput {
+        event_name: "session.error".to_string(),
+        payload: serde_json::json!({"error": "connection failed"}),
+    };
+    assert_eq!(opencode::choose_signal(&input), "blocked");
+}
+
+#[test]
+fn opencode_tool_error_output_maps_to_blocked() {
+    let input = opencode::OpenCodeHookInput {
+        event_name: "tool.execute.after".to_string(),
+        payload: serde_json::json!({"output": "error: command not found"}),
+    };
+    assert_eq!(opencode::choose_signal(&input), "blocked");
+}
+
+#[test]
+fn opencode_session_key_prefers_session_id_then_env_then_cwd() {
+    let key = opencode::session_key(
+        &opencode::OpenCodeHookInput {
+            event_name: "session.created".to_string(),
+            payload: serde_json::json!({"session_id": "opc-123", "cwd": "/tmp/project"}),
+        },
+        &BTreeMap::from([(
+            "OPENCODE_SESSION_ID".to_string(),
+            "opc-env-session".to_string(),
+        )]),
+    );
+    assert_eq!(key, "opc-123");
+}
+
+#[test]
+fn opencode_session_key_falls_back_to_global() {
+    let key = opencode::session_key(
+        &opencode::OpenCodeHookInput {
+            event_name: "session.status".to_string(),
+            payload: serde_json::json!({}),
+        },
+        &BTreeMap::new(),
+    );
+    assert_eq!(key, "global");
 }

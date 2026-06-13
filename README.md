@@ -314,7 +314,7 @@ The easiest way to install or repair local hooks is the built-in wizard:
 ```bash
 ./scripts/install-hooks
 ./scripts/install-hooks --all -y
-./scripts/install-hooks --agent codex --agent claude-code -y
+./scripts/install-hooks --agent codex --agent claude-code --agent opencode -y
 ```
 
 The wizard detects supported local agents, validates the current hook files, creates timestamped backups, and installs only the Signal Light hook entries while keeping other hooks on the same events.
@@ -328,7 +328,7 @@ The first hook or `play` command auto-starts a local Signal Light server process
 ```bash
 ./scripts/install-hooks
 ./scripts/install-hooks --all -y
-./scripts/install-hooks --agent codex --agent claude-code -y
+./scripts/install-hooks --agent codex --agent claude-code --agent opencode -y
 ```
 
 向导会识别已支持的本地 Agent，检查当前 hook 文件，写入前创建带时间戳的备份，并且只安装 Signal Light 自己的 hook 条目，保留同一事件下已有的其它 hook。
@@ -428,6 +428,46 @@ echo '{"event":"Notification","session_id":"demo"}' | ./scripts/claude-code-sign
 See [docs/LAMP_LANGUAGE.md](docs/LAMP_LANGUAGE.md) for a complete `~/.claude/settings.json` example.
 
 完整 `~/.claude/settings.json` 示例见 [docs/LAMP_LANGUAGE.md](docs/LAMP_LANGUAGE.md)。
+
+## OpenCode Integration / OpenCode 集成
+
+OpenCode support is installed as a plugin file under `~/.config/opencode/plugins/signal-light.ts`:
+
+```bash
+./scripts/install-hooks --agent opencode -y
+```
+
+The generated plugin forwards supported OpenCode events into the same native runtime:
+
+| OpenCode event | Signal behavior |
+| --- | --- |
+| `session.created` | Green idle |
+| `session.idle` | Green completion cue, then aggregate state without that session's normal work |
+| `session.error` | Red flashing |
+| `tool.execute.before` | Working cycle |
+| `tool.execute.after` | Working cycle, or red flashing if the payload reports a failure |
+| `permission.asked` | Red flashing |
+| `command.executed` | Working cycle |
+
+OpenCode 会通过插件文件安装到 `~/.config/opencode/plugins/signal-light.ts`：
+
+```bash
+./scripts/install-hooks --agent opencode -y
+```
+
+生成的插件会把支持的 OpenCode 事件转发到同一个 native runtime：
+
+| OpenCode 事件 | 灯效行为 |
+| --- | --- |
+| `session.created` | 绿灯空闲 |
+| `session.idle` | 绿灯提示完成，然后恢复去掉该会话普通工作态后的聚合状态 |
+| `session.error` | 红灯闪烁 |
+| `tool.execute.before` | 工作循环 |
+| `tool.execute.after` | 工作循环；如果 payload 报错则切到红灯闪烁 |
+| `permission.asked` | 红灯闪烁 |
+| `command.executed` | 工作循环 |
+
+完整插件示例见 [docs/LAMP_LANGUAGE.md](docs/LAMP_LANGUAGE.md)。
 
 ## Multi-Session Behavior / 多会话行为
 

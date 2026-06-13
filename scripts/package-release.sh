@@ -30,7 +30,7 @@ rm -rf "$WORK_DIR" "$ARCHIVE"
 mkdir -p "$WORK_DIR/bin" "$WORK_DIR/scripts" "$WORK_DIR/docs/images" "$OUT_DIR"
 
 install -m 755 "$BINARY" "$WORK_DIR/bin/signal-light-native"
-for script in signal-light install-hooks codex-signal-hook claude-code-signal-hook; do
+for script in signal-light install-hooks codex-signal-hook claude-code-signal-hook opencode-signal-hook; do
   install -m 755 "$ROOT_DIR/scripts/$script" "$WORK_DIR/scripts/$script"
 done
 
