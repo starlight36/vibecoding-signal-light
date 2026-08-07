@@ -443,9 +443,10 @@ The generated plugin forwards supported OpenCode events into the same native run
 | --- | --- |
 | `session.created` | Green idle |
 | `session.idle` | Green completion cue, then aggregate state without that session's normal work |
+| `session.status` | `idle`/`busy`/`retry` map to completion cue / working cycle / red flashing |
 | `session.error` | Red flashing |
 | `tool.execute.before` | Working cycle |
-| `tool.execute.after` | Working cycle, or red flashing if the payload reports a failure |
+| `tool.execute.after` | Working cycle, or red flashing if the tool output reports a failure |
 | `permission.asked` | Red flashing |
 | `command.executed` | Working cycle |
 
@@ -461,9 +462,10 @@ OpenCode 会通过插件文件安装到 `~/.config/opencode/plugins/signal-light
 | --- | --- |
 | `session.created` | 绿灯空闲 |
 | `session.idle` | 绿灯提示完成，然后恢复去掉该会话普通工作态后的聚合状态 |
+| `session.status` | `idle`/`busy`/`retry` 分别映射为完成提示 / 工作循环 / 红灯闪烁 |
 | `session.error` | 红灯闪烁 |
 | `tool.execute.before` | 工作循环 |
-| `tool.execute.after` | 工作循环；如果 payload 报错则切到红灯闪烁 |
+| `tool.execute.after` | 工作循环；如果工具输出报错则切到红灯闪烁 |
 | `permission.asked` | 红灯闪烁 |
 | `command.executed` | 工作循环 |
 

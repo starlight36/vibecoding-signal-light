@@ -146,6 +146,66 @@ fn opencode_session_key_prefers_session_id_then_env_then_cwd() {
 }
 
 #[test]
+fn opencode_session_status_busy_maps_to_working() {
+    let input = opencode::OpenCodeHookInput {
+        event_name: "session.status".to_string(),
+        payload: serde_json::json!({"session_id": "opc-s1", "status": {"type": "busy"}}),
+    };
+    assert_eq!(opencode::choose_signal(&input), "working");
+}
+
+#[test]
+fn opencode_session_status_idle_maps_to_turn_end() {
+    let input = opencode::OpenCodeHookInput {
+        event_name: "session.status".to_string(),
+        payload: serde_json::json!({"status": {"type": "idle"}}),
+    };
+    assert_eq!(opencode::choose_signal(&input), signals::TURN_END_SIGNAL);
+}
+
+#[test]
+fn opencode_session_status_retry_maps_to_blocked() {
+    let input = opencode::OpenCodeHookInput {
+        event_name: "session.status".to_string(),
+        payload: serde_json::json!({"status": {"type": "retry", "attempt": 2}}),
+    };
+    assert_eq!(opencode::choose_signal(&input), "blocked");
+}
+
+#[test]
+fn opencode_explicit_signal_overrides_session_status() {
+    let input = opencode::OpenCodeHookInput {
+        event_name: "session.status".to_string(),
+        payload: serde_json::json!({"signal": "turn_end", "status": {"type": "busy"}}),
+    };
+    assert_eq!(opencode::choose_signal(&input), signals::TURN_END_SIGNAL);
+}
+
+#[test]
+fn opencode_read_input_prefers_payload_hook_event_name_over_positional_arg() {
+    let input = opencode::read_input(
+        &[
+            "signal-light-native".to_string(),
+            "session.error".to_string(),
+        ],
+        r#"{"hook_event_name":"session.created","session_id":"opc-1"}"#,
+    );
+    assert_eq!(input.event_name, "session.created");
+}
+
+#[test]
+fn opencode_read_input_uses_positional_arg_when_payload_has_no_event() {
+    let input = opencode::read_input(
+        &[
+            "signal-light-native".to_string(),
+            "session.error".to_string(),
+        ],
+        r#"{"session_id":"opc-1"}"#,
+    );
+    assert_eq!(input.event_name, "session.error");
+}
+
+#[test]
 fn opencode_session_key_falls_back_to_global() {
     let key = opencode::session_key(
         &opencode::OpenCodeHookInput {

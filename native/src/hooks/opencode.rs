@@ -22,12 +22,10 @@ pub struct OpenCodeHookInput {
 }
 
 pub fn read_input(argv: &[String], stdin_text: &str) -> OpenCodeHookInput {
-    let mut event_name = event_from_args(argv);
     let payload = crate::hooks::parse_json_or_raw(stdin_text);
-    if event_name.is_none() {
-        event_name =
-            first_string(&payload, &["hook_event_name", "event", "type"]).map(str::to_string);
-    }
+    let event_name = first_string(&payload, &["hook_event_name", "event", "type"])
+        .map(str::to_string)
+        .or_else(|| event_from_args(argv));
     OpenCodeHookInput {
         event_name: event_name.unwrap_or_else(|| "session.idle".to_string()),
         payload,
@@ -38,7 +36,7 @@ pub fn choose_signal(input: &OpenCodeHookInput) -> String {
     if let Some(explicit) = first_string(&input.payload, &["signal", "signal_name", "lamp_signal"])
     {
         let normalized = explicit.to_ascii_lowercase();
-        if signals::is_public_signal(&normalized) {
+        if signals::is_public_signal(&normalized) || signals::is_hook_control_signal(&normalized) {
             return normalized;
         }
     }
@@ -53,6 +51,17 @@ pub fn choose_signal(input: &OpenCodeHookInput) -> String {
             "error" | "failed" | "failure" | "exception"
         ) {
             return "blocked".to_string();
+        }
+    }
+
+    if input.event_name == "session.status" {
+        if let Some(status_type) = find_nested_string(&input.payload, &["status", "type"]) {
+            return match status_type.as_str() {
+                "idle" => signals::TURN_END_SIGNAL.to_string(),
+                "busy" => "working".to_string(),
+                "retry" => "blocked".to_string(),
+                _ => "attention".to_string(),
+            };
         }
     }
 

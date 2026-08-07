@@ -260,9 +260,10 @@ Note: Unlike Codex hooks where the event name must be passed as an argument, Cla
 | --- | --- | --- |
 | `session.created` | `session_start` | steady green |
 | `session.idle` | `turn_end` | green completion cue, then aggregate state without that session's non-urgent work |
+| `session.status` (`idle`/`busy`/`retry`) | `turn_end`/`working`/`blocked` | depends on the reported status type |
 | `session.error` | `blocked` | flashing red |
-| `tool.execute.before` | `working` | slow green-yellow-red cycle |
-| `tool.execute.after` | `tool_done` | slow green-yellow-red cycle unless the payload reports a failure |
+| `tool.execute.before` (named hook) | `working` | slow green-yellow-red cycle |
+| `tool.execute.after` (named hook) | `tool_done` or `blocked` | slow green-yellow-red cycle unless the tool output reports a failure |
 | `permission.asked` | `permission` | flashing red |
 | `command.executed` | `working` | slow green-yellow-red cycle |
 
@@ -287,29 +288,47 @@ const EVENT_SIGNALS: Record<string, string> = {
   "session.created": "session_start",
   "session.idle": "turn_end",
   "session.error": "blocked",
-  "tool.execute.before": "working",
-  "tool.execute.after": "tool_done",
   "permission.asked": "permission",
   "command.executed": "working",
 }
 
+const SESSION_STATUS_SIGNALS: Record<string, string> = {
+  idle: "turn_end",
+  busy: "working",
+  retry: "blocked",
+}
+
 const SignalLightPlugin: Plugin = async ({ $, directory }) => {
+  const fire = (eventName: string, signal: string, sessionID?: string) => {
+    const payload = {
+      hook_event_name: eventName,
+      signal,
+      session_id: sessionID,
+      cwd: directory,
+    }
+    return $`printf %s ${JSON.stringify(payload)} | ${WRAPPER_SCRIPT}`
+      .quiet()
+      .catch(() => {})
+  }
+
   return {
     event: async ({ event }) => {
+      if (event.type === "session.status") {
+        const statusType = (event.properties?.status as { type?: string } | undefined)?.type
+        const signal = statusType ? SESSION_STATUS_SIGNALS[statusType] : undefined
+        if (signal) await fire(event.type, signal, event.properties?.sessionID)
+        return
+      }
       const signalName = EVENT_SIGNALS[event.type]
       if (!signalName) return
-
-      const payload = {
-        hook_event_name: event.type,
-        signal: signalName,
-        session_id: event.properties?.sessionID,
-        cwd: event.properties?.cwd || directory,
-        owner_pid: event.properties?.pid,
-      }
-
-      await $`printf %s ${JSON.stringify(payload)} | ${WRAPPER_SCRIPT}`
-        .quiet()
-        .catch(() => {})
+      await fire(event.type, signalName, event.properties?.sessionID)
+    },
+    "tool.execute.before": async (input) => {
+      await fire("tool.execute.before", "working", input.sessionID)
+    },
+    "tool.execute.after": async (input, output) => {
+      const failed = /error|failed|exception/i.test(output.output ?? "")
+      await fire("tool.execute.after", failed ? "blocked" : "tool_done", input.sessionID)
     },
   }
 }

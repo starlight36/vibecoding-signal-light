@@ -980,8 +980,8 @@ mod tests {
     use tempfile::tempdir;
 
     use super::{
-        hook_command, inspect_agent, install_agent, native_runtime_repair_hint, run_install_wizard,
-        supported_agents, AgentSpec,
+        hook_command, inspect_agent, install_agent, native_runtime_repair_hint, render_plugin_file,
+        run_install_wizard, supported_agents, AgentSpec,
     };
 
     #[test]
@@ -1352,5 +1352,33 @@ mod tests {
         assert!(plugin.contains("const WRAPPER_SCRIPT = \"/"));
         assert!(plugin.contains("scripts/opencode-signal-hook"));
         assert!(!plugin.contains("'scripts/opencode-signal-hook'"));
+    }
+
+    #[test]
+    fn opencode_plugin_template_registers_tool_and_session_status_hooks() {
+        let tempdir = tempdir().unwrap();
+        let spec = AgentSpec {
+            key: "opencode",
+            name: "OpenCode",
+            config_path: tempdir
+                .path()
+                .join(".config")
+                .join("opencode")
+                .join("plugins")
+                .join("signal-light.ts"),
+            hook_script: PathBuf::from("/tmp/scripts/opencode-signal-hook"),
+            events: &[],
+            passes_event_arg: false,
+            uses_matcher: false,
+            is_plugin_agent: true,
+            plugin_template: Some(super::OPENCODE_PLUGIN_TEMPLATE),
+        };
+
+        let plugin = render_plugin_file(&spec).unwrap();
+        assert!(plugin.contains("\"tool.execute.before\": async (input)"));
+        assert!(plugin.contains("\"tool.execute.after\": async (input, output)"));
+        assert!(plugin.contains("SESSION_STATUS_SIGNALS"));
+        assert!(plugin.contains("\"session.status\""));
+        assert!(!plugin.contains("owner_pid"));
     }
 }
