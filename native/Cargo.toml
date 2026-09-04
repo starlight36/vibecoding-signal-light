@@ -1,6 +1,6 @@
 [package]
 name = "signal-light-native"
-version = "0.1.3"
+version = "0.1.4"
 edition = "2021"
 description = "Native runtime for the Signal Light agent status display"
 license = "MIT"
