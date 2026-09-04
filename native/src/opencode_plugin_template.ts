@@ -1,4 +1,5 @@
 import type { Plugin } from "@opencode-ai/plugin"
+import { spawn } from "child_process"
 
 const WRAPPER_SCRIPT = __HOOK_SCRIPT_PATH_JSON__
 
@@ -16,17 +17,30 @@ const SESSION_STATUS_SIGNALS: Record<string, string> = {
   retry: "blocked",
 }
 
-const SignalLightPlugin: Plugin = async ({ $, directory }) => {
-  const fire = (eventName: string, signal: string, sessionID?: string) => {
-    const payload = {
-      hook_event_name: eventName,
-      signal,
-      session_id: sessionID,
-      cwd: directory,
-    }
-    return $`printf %s ${JSON.stringify(payload)} | ${WRAPPER_SCRIPT}`
-      .quiet()
-      .catch(() => {})
+const sessionIDOf = (properties: any): string | undefined =>
+  properties?.sessionID ?? properties?.info?.id
+
+const SignalLightPlugin: Plugin = async ({ directory }) => {
+  const fire = (eventName: string, signal: string, sessionID?: string): Promise<void> => {
+    return new Promise((resolve) => {
+      let child: ReturnType<typeof spawn>
+      try {
+        const payload = JSON.stringify({
+          hook_event_name: eventName,
+          signal,
+          session_id: sessionID,
+          cwd: directory,
+        })
+        child = spawn(WRAPPER_SCRIPT, [], { stdio: ["pipe", "ignore", "ignore"] })
+        child.stdin.end(payload + "\n")
+      } catch {
+        resolve()
+        return
+      }
+      child.on("error", () => resolve())
+      child.stdin.on("error", () => resolve())
+      child.on("close", () => resolve())
+    })
   }
 
   return {
@@ -34,12 +48,12 @@ const SignalLightPlugin: Plugin = async ({ $, directory }) => {
       if (event.type === "session.status") {
         const statusType = (event.properties?.status as { type?: string } | undefined)?.type
         const signal = statusType ? SESSION_STATUS_SIGNALS[statusType] : undefined
-        if (signal) await fire(event.type, signal, event.properties?.sessionID)
+        if (signal) await fire(event.type, signal, sessionIDOf(event.properties))
         return
       }
       const signalName = EVENT_SIGNALS[event.type]
       if (!signalName) return
-      await fire(event.type, signalName, event.properties?.sessionID)
+      await fire(event.type, signalName, sessionIDOf(event.properties))
     },
     "tool.execute.before": async (input) => {
       await fire("tool.execute.before", "working", input.sessionID)
